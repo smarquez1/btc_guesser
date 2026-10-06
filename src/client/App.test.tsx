@@ -408,6 +408,51 @@ describe("guess flow with fake timers", () => {
     ).toBeDisabled();
   });
 
+  it("arms the active-guess poll cadence at acceptance, not after the idle interval", async () => {
+    let gets = 0;
+    fetchMock.mockImplementation((input, init) => {
+      const url = String(input);
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (url === "/api/player" && method === "GET") {
+        gets += 1;
+        return Promise.resolve(
+          jsonResponse(
+            gets === 1
+              ? makePlayer()
+              : makePlayer({ activeGuess: makeActiveGuess() }),
+          ),
+        );
+      }
+      if (url === "/api/guesses") {
+        return Promise.resolve(
+          jsonResponse(makePlayer({ activeGuess: makeActiveGuess() }), 201),
+        );
+      }
+      return Promise.resolve(jsonResponse({ error: "unknown" }, 500));
+    });
+
+    render(<App />);
+    await flush();
+    expect(gets).toBe(1);
+
+    fireEvent.click(screen.getByRole("button", { name: copy.guess.up }));
+    await flush();
+    expect(screen.getByText(/You guessed up from/)).toBeInTheDocument();
+
+    // The onboarding idle timer must be gone: the active 5s cadence applies.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(4_999);
+    });
+    await flush();
+    expect(gets).toBe(1);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    await flush();
+    expect(gets).toBe(2);
+  });
+
   it("sends only one guess when submit is triggered twice while pending", async () => {
     let resolveGuess!: (value: Response) => void;
     const pendingGuess = new Promise<Response>((resolve) => {

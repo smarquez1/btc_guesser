@@ -5,6 +5,7 @@ import { type AppOptions, buildApp } from "./app.js";
 import {
   ActiveGuessConflict,
   type DueGuess,
+  guessMinWaitMs,
   ObsoleteGuessConflict,
   type PlayerRecord,
   type PlayerStore,
@@ -491,5 +492,47 @@ describe("guess acceptance window", () => {
     expect(active.startingPrice).toBe(observation.price);
     expect(active.acceptedAt).toBe(1000);
     expect(active.eligibleAt - active.acceptedAt).toBe(60000);
+  });
+});
+describe("guess minimum wait from GUESS_MIN_WAIT_MS", () => {
+  const original = process.env.GUESS_MIN_WAIT_MS;
+  afterEach(() => {
+    if (original === undefined) delete process.env.GUESS_MIN_WAIT_MS;
+    else process.env.GUESS_MIN_WAIT_MS = original;
+  });
+  it("falls back to 60000 for absent or invalid values", () => {
+    delete process.env.GUESS_MIN_WAIT_MS;
+    expect(guessMinWaitMs()).toBe(60000);
+    process.env.GUESS_MIN_WAIT_MS = "0";
+    expect(guessMinWaitMs()).toBe(60000);
+    process.env.GUESS_MIN_WAIT_MS = "abc";
+    expect(guessMinWaitMs()).toBe(60000);
+    process.env.GUESS_MIN_WAIT_MS = "-1000";
+    expect(guessMinWaitMs()).toBe(60000);
+  });
+  it("uses a positive integer override in the acceptance path", async () => {
+    process.env.GUESS_MIN_WAIT_MS = "1000";
+    expect(guessMinWaitMs()).toBe(1000);
+    const { store } = memoryStore();
+    const observation = {
+      price: "43210.5",
+      providerTradeAt: "2026-10-06T00:00:00Z",
+      receivedAt: 1000,
+    };
+    const app = setup({
+      store,
+      now: () => 1000,
+      price: async () => observation,
+    });
+    const { cookies } = await create(app);
+    const guess = await app.inject({
+      method: "POST",
+      url: "/api/guesses",
+      cookies,
+      payload: { direction: "up" },
+    });
+    expect(guess.statusCode).toBe(201);
+    const active = guess.json().activeGuess;
+    expect(active.eligibleAt - active.acceptedAt).toBe(1000);
   });
 });

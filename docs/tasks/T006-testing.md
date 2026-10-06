@@ -1,5 +1,8 @@
 # T006 — Verify the core journey
 
+**Status:** Done — implemented 2026-10-06. Full gate green: `pnpm check`,
+`pnpm build`, `pnpm test:integration`, and `pnpm test:e2e`.
+
 **Goal:** Test critical behavior without building a large or redundant E2E suite.
 
 **Dependencies:** [T002 — Player state](T002-player-state.md),
@@ -62,15 +65,15 @@ and claiming database guarantees from mocks alone.
 
 ## Acceptance criteria
 
-- [ ] Every matrix row has named passing tests or an explicit reported gap; tests
+- [x] Every matrix row has named passing tests or an explicit reported gap; tests
   cover timing, equal/unavailable prices, scoring, overlap, and session persistence.
-- [ ] RTL exercises UI behavior and the focused Playwright journey uses a real
+- [x] RTL exercises UI behavior and the focused Playwright journey uses a real
   backend with controlled time/provider data and an isolated store.
-- [ ] Tests are repeatable without live Coinbase or timing sleeps; fixtures clean
+- [x] Tests are repeatable without live Coinbase or timing sleeps; fixtures clean
   up data/processes and cannot leak controls into production.
-- [ ] Test scripts/setup and actual-vs-mocked database evidence are documented.
+- [x] Test scripts/setup and actual-vs-mocked database evidence are documented.
 
-- [ ] Required diagnostics tests cover classification/correlation, bounded repeated
+- [x] Required diagnostics tests cover classification/correlation, bounded repeated
   failure and recovery, and secret/personal-data redaction across boundaries;
   failure artifacts are reviewed for safety.
 
@@ -83,3 +86,28 @@ and claiming database guarantees from mocks alone.
   results, including browser/fixture setup and any skips or failures.
 - The gap matrix and whether persistence/concurrency evidence used a real
   DynamoDB/DynamoDB Local store or only mocked/in-memory boundaries.
+
+## Result (2026-10-06)
+
+All acceptance criteria met; every matrix row has named passing evidence and none is
+a reported gap. The matrix, fixtures, and actual-vs-mocked database evidence are in
+[docs/testing.md](../testing.md).
+
+- `pnpm check` — Biome 76 files, four TypeScript projects, Vitest 17 files / 210 tests passed.
+- `pnpm build` — client Vite build and server `tsc` passed.
+- `pnpm test:integration` — passed on real DynamoDB Local; now includes resolver
+  restart recovery (fresh instance discovers a persisted guess and scores once) and a
+  real missing-table `503 persistence_unavailable` check with no writes or leaks.
+- `pnpm test:e2e` — 1 passed (~6.3s total; journey ~4.5s) against the real Fastify app
+  and DynamoDB Local; isolated table removed, `btc-guesser-local` untouched, no live
+  Coinbase. Playwright's clock drives the browser poll timer, and the client arms the
+  pending 5s cadence at acceptance.
+- Diagnostics/redaction: server, provider, repository, worker, React, and real-browser
+  console assertions; seeded secrets/names absent; Playwright artifacts disabled.
+
+Fixture: `tests/e2e/server.ts` is a test-only launcher (ports 3300/5373/3301) with a
+loopback-only control channel and an injected ticker. `GUESS_MIN_WAIT_MS` is now a real
+documented runtime setting (default 60000), so the journey exercises the real
+acceptance-window path rather than a test-only store wrapper.
+
+Remaining: live Coinbase health, AWS IAM, and the public deployment belong to T007.

@@ -3,9 +3,12 @@
   "files": {
     "includes": [
       "src/**",
+      "tests/**",
       "*.json",
       "vite.config.ts",
       "vitest.config.ts",
+      "vite.e2e.config.ts",
+      "playwright.config.ts",
       "!opencode.json",
       "!skills-lock.json",
       "!components.json",

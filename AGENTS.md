@@ -9,6 +9,7 @@ Read these sources before planning or implementing a task:
 | `docs/product-and-scope.md` | Game behavior, player identity, UX requirements, and scope boundaries |
 | `docs/technical-approach.md` | Architecture, technology choices, and reliability tradeoffs |
 | `docs/tasks/README.md` | Task order and current status; follow its linked prompt for the assigned task |
+| `docs/testing.md` | Test gap matrix, fixtures, and actual-vs-mocked evidence |
 | `docs/mockup.pen` | Game interface design reference; inspect with pen.dev tools when working on the UI |
 
 Keep product and architecture decisions in those documents, not in this file. If a task conflicts with them, clarify the conflict before implementing it.
@@ -23,13 +24,6 @@ Keep product and architecture decisions in those documents, not in this file. If
 - Players can only make one guess at a time
 - New players start with a score of 0
 
-### Solution requirements
-
-- The guesses should be resolved fairly using BTC price data from any available 3rd party API
-- The score of each player should be persisted in a backend data store (AWS services preferred)
-- Please provide us a link to your deployed solution.
-- Optional: Players should be able to close their browser and return back to see their score and continue to make more guesses
-
 ## Working rules
 
 - Keep changes focused on the assigned task and follow existing project conventions.
@@ -41,7 +35,7 @@ Keep product and architecture decisions in those documents, not in this file. If
 
 - Use the project-local `typescript-fastify` skill for Fastify work and `typescript-testing` for TypeScript/Vitest tests when relevant. These are guidance, not mandates: this file, the existing code, and current official docs take precedence. Do not add TypeBox, MSW, or other dependencies only because a skill demonstrates them.
 - Use Biome for formatting/linting and Lefthook for fast local checks.
-- Use Vitest for game rules and backend behavior, React Testing Library for UI behavior, and a small Playwright suite for the main browser journey.
+- Use Vitest for game rules and backend behavior, React Testing Library for UI behavior, and a small Playwright suite for the main browser journey; the browser suite lives in `tests/e2e/` — read `tests/e2e/AGENTS.md` before changing it.
 - Make tests deterministic with injected time and price data. Do not depend on live Coinbase responses or wait a real minute in tests.
 - Run the relevant checks for each change and report what ran and what passed.
 - Do not mark tasks complete or claim deployment, a public repository, or final documentation exists without verifying it. Follow the deployment task for the final README requirements.
@@ -81,5 +75,6 @@ Keep product and architecture decisions in those documents, not in this file. If
 - Pre-commit runs serially: Biome safe fixes (`check --write`, no `--unsafe`) on matching staged files and re-staging, project type checks for TS/TSX/JSON changes, then unconditional `pnpm test` and `pnpm test:integration`. Lefthook preserves unstaged edits in partially staged files; check/test failures block the hook.
 - Integration requires a configured, running loopback DynamoDB Local service, including for documentation-only commits. It creates a unique test table and cleans up only that table, never the development table. Report missing configuration/service as a blocker; do not silently skip it or claim mocked tests verify persistence.
 - Run `pnpm check` (Biome, TypeScript, Vitest) and `pnpm build` for setup or integration changes. Report their actual results before marking work complete.
+- `pnpm test:e2e` runs the focused Playwright journey against the real app and an isolated DynamoDB Local table. It needs a running DynamoDB Local and a one-time `pnpm exec playwright install chromium`; it is intentionally not part of pre-commit (keep commits fast) and is not a substitute for `pnpm test:integration`; see `tests/e2e/AGENTS.md`.
 - Diagnose TypeScript errors with `pnpm typecheck` and formatting/lint issues with `pnpm lint`. Fix the underlying cause rather than weakening strict mode or adding blanket suppressions; add lint rules only for demonstrated problems. When adding maintained source or tooling files, keep Biome's `files.includes` coverage current.
 - `tsconfig.json` is the root editor solution; split client/server/tools projects extend `tsconfig.base.json`. Keep strict options shared and server NodeNext ESM settings intact. Use workspace TypeScript and reload the language server after config changes rather than removing valid top-level await to mask project-selection errors.

@@ -4,7 +4,6 @@ This is the plain-text task index. Each linked file is a self-contained prompt t
 
 ## Must do — Ready
 
-- [ ] [T006 — Verify the core journey](T006-testing.md)
 - [ ] [T007 — Deploy and document the demo](T007-deploy-and-readme.md)
 
 ## Must do — In progress
@@ -18,6 +17,7 @@ None.
 - [x] [T003 — Integrate BTC pricing and caching](T003-btc-pricing.md)
 - [x] [T004 — Implement guess resolution and scoring](T004-game-rules.md)
 - [x] [T005 — Build the game interface](T005-game-interface.md)
+- [x] [T006 — Verify the core journey](T006-testing.md)
 - [x] [T008 — Create the game mockup](T008-game-mockup.md)
 
 ## Nice to have — Ready

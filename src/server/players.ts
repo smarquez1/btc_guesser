@@ -120,6 +120,20 @@ function statusToErrorCode(status: number): string {
         ? "unsupported_media_type"
         : "invalid_request";
 }
+/**
+ * Minimum wait between accepting a guess and allowing resolution, in
+ * milliseconds. GUESS_MIN_WAIT_MS overrides the 60s rule only when it is a
+ * positive integer string; any other value (including absent) falls back to
+ * 60_000. Read at runtime so local tooling can shorten the window.
+ */
+export function guessMinWaitMs(): number {
+  const configured = process.env.GUESS_MIN_WAIT_MS;
+  if (configured !== undefined && /^[1-9]\d*$/.test(configured)) {
+    const value = Number(configured);
+    if (Number.isSafeInteger(value)) return value;
+  }
+  return 60_000;
+}
 export async function playerRoutes(
   app: FastifyInstance,
   options: PlayerOptions,
@@ -253,7 +267,7 @@ export async function playerRoutes(
         direction,
         startingPrice: observation.price,
         acceptedAt,
-        eligibleAt: acceptedAt + 60_000,
+        eligibleAt: acceptedAt + guessMinWaitMs(),
       }),
     );
     return reply.code(201).send(state(updated));

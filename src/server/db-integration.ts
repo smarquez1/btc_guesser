@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { DeleteTableCommand } from "@aws-sdk/client-dynamodb";
+import {
+  DeleteTableCommand,
+  DescribeTableCommand,
+} from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
 import { buildApp } from "./app.js";
 import { isAwsError } from "./aws-error.js";
@@ -12,6 +15,7 @@ import {
   type PendingGuess,
   type ResolvedGuess,
 } from "./players.js";
+import { createResolver } from "./resolver.js";
 
 requireLocalEndpoint();
 const table = `btc-guesser-test-${randomUUID()}`;
@@ -140,6 +144,61 @@ try {
     1,
   );
   assert.equal((await store.get(duplicateId))?.score, -1);
+  // Resolver restart recovery: a due guess persisted in DynamoDB is discovered
+  // and scored exactly once by a fresh resolver built over a new store instance
+  // on the same table (proves discovery comes from the table, not memory).
+  const restartId = randomUUID();
+  await store.create({
+    playerId: restartId,
+    displayName: "Restart test",
+    sessionDigest: "test-only",
+    score: 0,
+  });
+  const restartGuess: PendingGuess = {
+    id: randomUUID(),
+    direction: "up",
+    startingPrice: "1.000000001",
+    acceptedAt: 1000,
+    eligibleAt: 2000,
+  };
+  await store.accept(restartId, restartGuess);
+  const restartClient = createDynamoClient();
+  const restartStore = new DynamoPlayerStore(
+    DynamoDBDocumentClient.from(restartClient),
+    table,
+  );
+  const restartResolver = createResolver({
+    store: restartStore,
+    // Injected observation and clock: no live provider, no real-minute wait.
+    trusted: async () => ({
+      price: "1.000000002",
+      providerTradeAt: "2026-10-06T00:00:00Z",
+      receivedAt: 61000,
+    }),
+    now: () => 61000,
+    pollMs: 1000,
+    batchLimit: 50,
+  });
+  await restartResolver.sweep();
+  await restartResolver.close();
+  const restarted = await restartStore.get(restartId);
+  assert.equal(restarted?.score, 1);
+  assert.equal(restarted?.activeGuess, undefined);
+  assert.equal(restarted?.latestGuess?.id, restartGuess.id);
+  assert.equal(restarted?.latestGuess?.result, "correct");
+  await assert.rejects(
+    restartStore.resolve(restartId, {
+      ...restartGuess,
+      result: "correct",
+      scoreDelta: 1,
+      resolvedAt: 61000,
+      observedPrice: "1.000000002",
+      observedAt: 61000,
+    }),
+    (error) => error instanceof ObsoleteGuessConflict,
+  );
+  assert.equal((await restartStore.get(restartId))?.score, 1);
+  restartClient.destroy();
   const created = await app.inject({
     method: "POST",
     url: "/api/players",
@@ -172,8 +231,50 @@ try {
   const restored = await app.inject({ url: "/api/player", cookies });
   assert.equal(restored.statusCode, 200, restored.body);
   assert.deepEqual(restored.json(), accepted);
+  // Persistence unavailable against the real SDK: a store pointed at a table
+  // that does not exist must surface HTTP 503 without leaking internals.
+  const missingTable = `btc-guesser-test-missing-${randomUUID()}`;
+  const unavailableApp = buildApp({
+    store: new DynamoPlayerStore(
+      DynamoDBDocumentClient.from(client),
+      missingTable,
+    ),
+    now: () => 1000,
+    price: async () => ({
+      price: "123.000000001",
+      providerTradeAt: "2026-10-06T00:00:00Z",
+      receivedAt: 1234,
+    }),
+  });
+  try {
+    const phantomToken = "b".repeat(64);
+    const unavailable = await unavailableApp.inject({
+      method: "POST",
+      url: "/api/guesses",
+      cookies: { btc_player: `phantom.${phantomToken}` },
+      payload: { direction: "up" },
+    });
+    assert.equal(unavailable.statusCode, 503, unavailable.body);
+    assert.deepEqual(unavailable.json(), { error: "persistence_unavailable" });
+    assert.ok(!unavailable.body.includes(phantomToken));
+    assert.ok(!unavailable.body.includes("ResourceNotFound"));
+    assert.ok(!unavailable.body.includes(missingTable));
+    assert.ok(!unavailable.body.includes("DynamoDB"));
+    // The failed accept must not have created the table or written anything.
+    let tableStillMissing = false;
+    try {
+      await client.send(new DescribeTableCommand({ TableName: missingTable }), {
+        abortSignal: AbortSignal.timeout(2_000),
+      });
+    } catch (error) {
+      tableStillMissing = isAwsError(error, "ResourceNotFoundException");
+    }
+    assert.ok(tableStillMissing, "missing table must remain uncreated");
+  } finally {
+    await unavailableApp.close();
+  }
   console.info(
-    "DynamoDB Local integration passed: session/state restored across app instances; concurrent conditional update accepted once; due discovery plus conditional resolution scored once without double counting.",
+    "DynamoDB Local integration passed: session/state restored across app instances; concurrent conditional update accepted once; due discovery plus conditional resolution scored once without double counting; resolver restart recovery discovered a persisted guess from the table, scored once, and rejected a second resolve; a nonexistent table returned 503 persistence_unavailable without writing or leaking internals.",
   );
 } finally {
   await app.close();

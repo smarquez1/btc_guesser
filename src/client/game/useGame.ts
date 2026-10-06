@@ -25,10 +25,12 @@ import {
   reportableError,
 } from "@/diagnostics";
 import {
+  ACTIVE_GUESS_POLL_MS,
   canSubmitGuess,
   type GameAction,
   type GameState,
   gameReducer,
+  IDLE_POLL_MS,
   initialGameState,
   pollDelayMs,
   shouldPoll,
@@ -309,6 +311,9 @@ export function useGame(): GameController {
   const activeGuessId = state.player?.activeGuess?.id ?? null;
 
   // Recursive timeout loop: no overlap, cadence re-read after each settle.
+  // `activeGuessId` is the cadence trigger. It is stable across identical poll
+  // responses, so the effect only re-arms on ready→pending and pending→resolved,
+  // applying the 5s active cadence immediately instead of after an idle tick.
   useEffect(() => {
     if (!polling) return;
     let cancelled = false;
@@ -347,12 +352,15 @@ export function useGame(): GameController {
       }
     };
 
-    schedule(pollDelayMs(stateRef.current));
+    // Seed the first delay from the cadence trigger so a ready→pending
+    // transition arms the active cadence now; later ticks use the latest state.
+    schedule(activeGuessId === null ? IDLE_POLL_MS : ACTIVE_GUESS_POLL_MS);
     return () => {
       cancelled = true;
       if (timer !== undefined) clearTimeout(timer);
     };
   }, [
+    activeGuessId,
     applyIfNewest,
     beginRequest,
     endRequest,
