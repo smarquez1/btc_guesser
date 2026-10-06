@@ -9,7 +9,7 @@
       "!opencode.json",
       "!skills-lock.json",
       "!components.json",
-      "!!**/.slim"
+      "!!.slim"
     ]
   },
   "formatter": { "enabled": true, "indentStyle": "space", "indentWidth": 2 },

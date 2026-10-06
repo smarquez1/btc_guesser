@@ -8,6 +8,7 @@ import {
   type PlayerRecord,
   type PlayerStore,
 } from "./players.js";
+import { createPricingService } from "./pricing.js";
 
 function memoryStore() {
   const records = new Map<string, PlayerRecord>();
@@ -46,6 +47,79 @@ afterEach(async () => {
   await Promise.all(apps.splice(0).map((app) => app.close()));
 });
 describe("player API", () => {
+  it("hands off shared live display/trusted observations on existing routes and owns lifecycle", async () => {
+    const { store } = memoryStore();
+    const now = Date.parse("2026-10-06T00:00:00Z");
+    const fetch = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        price: "123.00001",
+        time: new Date(now).toISOString(),
+      }),
+    }));
+    const service = createPricingService({ fetch, now: () => now });
+    const start = vi.spyOn(service, "start");
+    const close = vi.spyOn(service, "close");
+    const app = setup({ store, pricingService: () => service });
+    expect(start).not.toHaveBeenCalled();
+    await app.ready();
+    expect(start).toHaveBeenCalledOnce();
+    await service.trusted();
+    const pricing = {
+      status: "fresh",
+      observation: {
+        price: "123.00001",
+        providerTradeAt: new Date(now).toISOString(),
+        receivedAt: now,
+      },
+    };
+    const { response, cookies } = await create(app);
+    expect(response.json().pricing).toEqual(pricing);
+    expect(
+      (await app.inject({ url: "/api/player", cookies })).json().pricing,
+    ).toEqual(pricing);
+    const guess = await app.inject({
+      method: "POST",
+      url: "/api/guesses",
+      cookies,
+      payload: { direction: "up" },
+    });
+    expect(guess.statusCode).toBe(201);
+    expect(guess.json().pricing).toEqual(pricing);
+    expect(guess.json().activeGuess.startingPrice).toBe("123.00001");
+    expect(fetch).toHaveBeenCalledOnce();
+    await app.close();
+    expect(close).toHaveBeenCalledOnce();
+  });
+  it("shows stale last-known data without allowing a submission write", async () => {
+    const { store } = memoryStore();
+    const pricing = {
+      status: "stale" as const,
+      observation: {
+        price: "1",
+        providerTradeAt: "2026-10-06T00:00:00Z",
+        receivedAt: 0,
+      },
+    };
+    const app = setup({
+      store,
+      displayPricing: () => pricing,
+      price: async () => null,
+    });
+    const { response, cookies } = await create(app);
+    expect(response.json().pricing).toEqual(pricing);
+    expect(
+      (await app.inject({ url: "/api/player", cookies })).json().pricing,
+    ).toEqual(pricing);
+    const guess = await app.inject({
+      method: "POST",
+      url: "/api/guesses",
+      cookies,
+      payload: { direction: "down" },
+    });
+    expect(guess.statusCode).toBe(503);
+    expect(store.accept).not.toHaveBeenCalled();
+  });
   it("creates distinct IDs for equal labels and restores a valid session across app instances", async () => {
     const { store } = memoryStore();
     const app = setup({ store });
@@ -57,6 +131,7 @@ describe("player API", () => {
       score: 0,
       activeGuess: null,
       latestGuess: null,
+      pricing: { status: "unavailable", observation: null },
     });
     const second = await create(app);
     expect(second.response.json().id).not.toBe(first.response.json().id);

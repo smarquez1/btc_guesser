@@ -6,6 +6,7 @@ import {
 } from "node:crypto";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { playerDiagnostics } from "./player-diagnostics.js";
+import type { DisplayPricing, PriceObservation } from "./pricing.js";
 
 export interface PendingGuess {
   id: string;
@@ -36,7 +37,8 @@ export interface PlayerOptions {
   id?: () => string;
   token?: () => string;
   // T003 owns freshness/validation; null means no fresh trusted observation.
-  price?: () => Promise<{ price: string } | null>;
+  price?: () => Promise<PriceObservation | null>;
+  displayPricing?: () => DisplayPricing;
 }
 export function digestToken(token: string) {
   return createHash("sha256").update(token).digest("hex");
@@ -79,8 +81,12 @@ export async function playerRoutes(
     id = randomUUID,
     token = () => randomBytes(32).toString("hex"),
     price = async () => null,
+    displayPricing = () => ({ status: "unavailable", observation: null }),
   } = options;
-  const state = publicPlayer;
+  const state = (player: PlayerRecord) => ({
+    ...publicPlayer(player),
+    pricing: displayPricing(),
+  });
   const diagnostics = playerDiagnostics(now);
   async function storageCall<T>(
     request: FastifyRequest,

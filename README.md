@@ -25,10 +25,11 @@ Open http://localhost:5173 for the starter screen. Verify the API at
 http://localhost:5173/api/health (through Vite's proxy), or directly at
 http://127.0.0.1:3000/api/health. Both return `{ "status": "ok" }`.
 
-**Backend at T002:** session identity and DynamoDB player/active-guess persistence.
-Live pricing (T003), resolution/scoring (T004), and interface integration remain
-separate work. Runtime guess submission currently returns `price_unavailable`;
-there is no placeholder price. Health/static serving work without database config;
+**Backend:** session identity, DynamoDB player/active-guess persistence, and shared
+Coinbase pricing. Resolution/scoring (T004) and interface integration remain
+separate work. Runtime guess submission requires trusted pricing and returns
+`price_unavailable` without writes during degradation; there is no placeholder
+price. Health/static serving work without database config;
 player operations return `persistence_unavailable` in that case.
 
 ### DynamoDB Local
@@ -63,7 +64,7 @@ uses DescribeTable/CreateTable; the isolated integration command uses DeleteTabl
 All player responses use `Cache-Control: no-store`. Successful responses share:
 
 ```json
-{"id":"server-generated UUID","displayName":"Ada","score":0,"activeGuess":null,"latestGuess":null}
+{"id":"server-generated UUID","displayName":"Ada","score":0,"activeGuess":null,"latestGuess":null,"pricing":{"status":"unavailable","observation":null}}
 ```
 
 | Operation | Request | Success |
@@ -103,6 +104,60 @@ writes. Routine validation/auth/conflict responses and successful operations do
 not add application logs. Automatic request logs are disabled; request/error
 serializers omit client URLs, headers, IPs, names, credentials, and raw errors.
 Seeded-secret logger tests verify categories, correlation, suppression and recovery.
+
+### BTC pricing — T003 handoff
+
+The runtime uses unauthenticated `GET
+https://api.exchange.coinbase.com/products/BTC-USD/ticker`. Coinbase `price` is
+retained as an exact string; `time` is the **last trade timestamp**, not a response
+generation timestamp or a promise of freshness. No API key or new environment
+knobs are needed. These are application policies, not Coinbase guarantees:
+
+| Policy | Default |
+|---|---|
+| Cache lifetime | 5 seconds (hits never renew receipt time) |
+| Poll interval | 5 seconds after the preceding operation finishes |
+| Provider timeout | 3 seconds total, including body parsing |
+| Failure retry cooldown | 5 seconds after failure; no request-triggered tight retry |
+| Trusted server receipt age | At most 15 seconds |
+| Trusted last trade age | At most 120 seconds; at most 5 seconds in the future |
+| Decimal validation | Positive plain decimal, at most 128 characters; no exponent/sign/whitespace |
+| Provider timestamp | Valid UTC ISO date-time with `Z`, optional 1–9 fractional digits; impossible dates rejected |
+
+One process-wide service shares an in-flight operation across routes/polling. A new
+valid HTTP response records a new server receipt even if price and trade time are
+identical; reading the cache never changes it. Polling begins in Fastify's
+`onReady`; `app.close()` aborts the operation and clears timeout/poll timers. The
+timeout settles callers even if a transport ignores abort; late results cannot
+overwrite the cache. An uncooperative transport itself cannot be forcibly stopped.
+
+Successful responses from all three existing player routes add `pricing`:
+
+```json
+{"status":"fresh","observation":{"price":"63123.123456789","providerTradeAt":"2026-10-06T00:00:00.123456Z","receivedAt":1791244800125}}
+```
+
+`fresh` means both age policies hold and no provider failure has occurred since
+that observation. `stale` retains last-known data after failure/expiry; `unavailable`
+has `observation: null` because no valid data has been obtained. Display may round
+the price, but must label stale data and must not invent a current price. The
+injected trusted callback returns `PriceObservation | null`; display data is a
+separate callback and is never a substitute for trusted data. The default testable
+`buildApp()` has unavailable pricing and does not fetch Coinbase.
+
+For T004, check the trusted observation's **server `receivedAt`** against the guess
+deadline. A pre-deadline cache hit is not eligible, but a newly received identical
+ticker can be. `providerTradeAt` is context/freshness validation, **not** an
+additional deadline condition. `comparePrices` compares differing precision and
+leading zeros exactly without floating-point price conversion. Scoring/resolution
+are not implemented by T003.
+
+Pricing diagnostics use safe generated job IDs, category, elapsed/receipt age,
+and retry delay. Failures/expiry warn at most once per 60 seconds; recovery logs
+info. There are no routine cache-read/poll logs and no raw payloads, external
+exception text, names, or cookies in pricing logs. Deterministic tests inject
+fetch/time, use fake timers, and capture seeded-secret diagnostics; they never
+contact Coinbase. Local checks do not establish live provider/deployment health.
 
 ### Persistence verification
 

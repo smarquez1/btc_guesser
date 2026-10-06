@@ -50,15 +50,13 @@ attribute is stored. T004 will own conditional resolution and score updates.
 
 `POST /api/players`, `GET /api/player`, and `POST /api/guesses` return the same
 explicit public state: `id`, `displayName`, `score`, `activeGuess`, `latestGuess`.
-The planned T003 handoff adds `pricing` without changing these fields.
+T003 adds `pricing` to successful responses without changing these fields.
 README documents payloads, statuses, cookie policy, timestamps and configuration.
-T003's intended trusted-price source supplies `PriceObservation | null` with exact
+An injected trusted-price source supplies `PriceObservation | null` with exact
 `price`, provider `providerTradeAt`, and server epoch-ms `receivedAt`;
 T003 owns observation validation/freshness and runtime caching. Unavailable trusted
 pricing makes submissions fail without writes. Tests inject price,
 clock and IDs; neither placeholder prices nor an in-memory runtime store are used.
-T003 implementation is currently stashed; the checked-out T002 runtime still uses
-an unavailable price source and does not expose the planned `pricing` field.
 
 Local development uses persistent DynamoDB Local storage via Compose. The SDK
 setup command is idempotent; the explicit integration command uses and cleans
@@ -73,9 +71,6 @@ and serializers sanitize fallback errors; deterministic writable-stream tests
 check correlation and seeded-secret omission without a new logging dependency.
 
 ## T003 pricing policies and handoff
-
-This section specifies the planned handoff, not delivered runtime behavior.
-T003 remains in progress; its source is preserved in the `t003 changes` stash.
 
 Use Coinbase Exchange's unauthenticated BTC-USD ticker GET endpoint:
 `https://api.exchange.coinbase.com/products/BTC-USD/ticker`. Its `time` identifies

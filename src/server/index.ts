@@ -1,6 +1,7 @@
 import { fileURLToPath } from "node:url";
 import { buildApp } from "./app.js";
 import { runtimePersistence } from "./dynamodb.js";
+import { createPricingService } from "./pricing.js";
 
 const production =
   process.env.NODE_ENV === "production" ||
@@ -10,6 +11,7 @@ const app = buildApp({
   production,
   store: persistence?.store,
   logger: true,
+  pricingService: (log) => createPricingService({ log }),
   staticDir: production
     ? fileURLToPath(new URL("../client/", import.meta.url))
     : undefined,

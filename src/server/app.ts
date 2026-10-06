@@ -1,17 +1,24 @@
 import { extname } from "node:path";
 import cookie from "@fastify/cookie";
 import fastifyStatic from "@fastify/static";
-import Fastify, { type FastifyServerOptions, LogController } from "fastify";
+import Fastify, {
+  type FastifyBaseLogger,
+  type FastifyServerOptions,
+  LogController,
+} from "fastify";
 import { type PlayerOptions, playerRoutes } from "./players.js";
+import type { PricingService } from "./pricing.js";
 
 export interface AppOptions extends PlayerOptions {
   logger?: FastifyServerOptions["logger"];
   staticDir?: string;
+  pricingService?: (log: FastifyBaseLogger) => PricingService;
 }
 
 export function buildApp({
   logger = false,
   staticDir,
+  pricingService,
   ...players
 }: AppOptions = {}) {
   const app = Fastify({
@@ -35,6 +42,17 @@ export function buildApp({
     requestIdHeader: false,
   });
   app.register(cookie);
+  if (pricingService) {
+    const pricing = pricingService(app.log);
+    players.price = pricing.trusted;
+    players.displayPricing = pricing.display;
+    app.addHook("onReady", async () => {
+      pricing.start();
+    });
+    app.addHook("onClose", async () => {
+      await pricing.close();
+    });
+  }
   app.register(playerRoutes, players);
 
   app.get("/api/health", async () => ({ status: "ok" }));

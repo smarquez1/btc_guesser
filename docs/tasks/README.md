@@ -10,13 +10,13 @@ This is the plain-text task index. Each linked file is a self-contained prompt t
 
 ## Must do — In progress
 
-- [ ] [T003 — Integrate BTC pricing and caching](T003-btc-pricing.md)
 - [ ] [T005 — Build the game interface](T005-game-interface.md)
 
 ## Must do — Done
 
 - [x] [T001 — Set up the app and developer workflow](T001-project-setup.md)
 - [x] [T002 — Persist player profiles and game state](T002-player-state.md)
+- [x] [T003 — Integrate BTC pricing and caching](T003-btc-pricing.md)
 - [x] [T008 — Create the game mockup](T008-game-mockup.md)
 
 ## Nice to have — Ready
