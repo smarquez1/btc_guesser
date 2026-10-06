@@ -4,7 +4,6 @@ This is the plain-text task index. Each linked file is a self-contained prompt t
 
 ## Must do — Ready
 
-- [ ] [T001 — Set up the app and developer workflow](T001-project-setup.md)
 - [ ] [T002 — Persist player profiles and game state](T002-player-state.md)
 - [ ] [T003 — Integrate BTC pricing and caching](T003-btc-pricing.md)
 - [ ] [T004 — Implement guess resolution and scoring](T004-game-rules.md)
@@ -17,6 +16,7 @@ This is the plain-text task index. Each linked file is a self-contained prompt t
 
 ## Must do — Done
 
+- [x] [T001 — Set up the app and developer workflow](T001-project-setup.md)
 - [x] [T008 — Create the game mockup](T008-game-mockup.md)
 
 ## Nice to have — Ready
