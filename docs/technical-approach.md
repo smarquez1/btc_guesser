@@ -37,3 +37,33 @@ Price data is polled and cached briefly by the backend so browser traffic does n
 - Anonymous progress is tied to the browser cookie; losing it means losing access to that player.
 - If independent background processing becomes important, move the resolution job to Lambda while keeping the API and game rules in the same codebase.
 - Free-tier limits and eligibility can change; check AWS usage and configure a budget alert.
+
+## T002 persistence and API decisions
+
+Each player is one DynamoDB item keyed by string `playerId`, with display name,
+score, session-token SHA-256 digest, and optional active/latest guess attributes.
+The browser's session-only `btc_player` cookie carries the public ID plus an
+independent random 32-byte token; the ID/name alone cannot authenticate. Reads
+are strongly consistent. Creation cannot overwrite an existing item; acceptance
+atomically requires an existing player and an absent active guess. No null active
+attribute is stored. T004 will own conditional resolution and score updates.
+
+`POST /api/players`, `GET /api/player`, and `POST /api/guesses` return the same
+explicit public state: `id`, `displayName`, `score`, `activeGuess`, `latestGuess`.
+README documents payloads, statuses, cookie policy, timestamps and configuration.
+An injected trusted-price source supplies an exact decimal string or unavailable;
+T003 owns observation validation/freshness and runtime caching. Until then the
+runtime source is unavailable, so guesses fail without writes. Tests inject price,
+clock and IDs; neither placeholder prices nor an in-memory runtime store are used.
+
+Local development uses persistent DynamoDB Local storage via Compose. The SDK
+setup command is idempotent; the explicit integration command uses and cleans
+only a unique test table. AWS runtime uses the standard SDK configuration chain;
+local dummy credentials are confined to configured loopback endpoints.
+
+T002 diagnostics use fixed operation/category/event fields and Fastify's generated
+request IDs, never raw errors or client/provider data. Failures log once per
+operation per minute; confirmed recovery logs once. Separate read/write slots
+avoid false recovery during a write outage. Automatic request logs are disabled
+and serializers sanitize fallback errors; deterministic writable-stream tests
+check correlation and seeded-secret omission without a new logging dependency.

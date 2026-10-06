@@ -8,7 +8,8 @@
       "vitest.config.ts",
       "!opencode.json",
       "!skills-lock.json",
-      "!components.json"
+      "!components.json",
+      "!!**/.slim"
     ]
   },
   "formatter": { "enabled": true, "indentStyle": "space", "indentWidth": 2 },

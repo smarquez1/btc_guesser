@@ -1,14 +1,41 @@
 import { extname } from "node:path";
+import cookie from "@fastify/cookie";
 import fastifyStatic from "@fastify/static";
-import Fastify from "fastify";
+import Fastify, { type FastifyServerOptions, LogController } from "fastify";
+import { type PlayerOptions, playerRoutes } from "./players.js";
 
-export interface AppOptions {
-  logger?: boolean;
+export interface AppOptions extends PlayerOptions {
+  logger?: FastifyServerOptions["logger"];
   staticDir?: string;
 }
 
-export function buildApp({ logger = false, staticDir }: AppOptions = {}) {
-  const app = Fastify({ logger });
+export function buildApp({
+  logger = false,
+  staticDir,
+  ...players
+}: AppOptions = {}) {
+  const app = Fastify({
+    logger: logger
+      ? {
+          ...(typeof logger === "object" ? logger : {}),
+          redact: ["req.headers.cookie", "res.headers.set-cookie"],
+          // URLs, IPs and raw errors can contain private client/provider data.
+          serializers: {
+            req: () => ({}),
+            res: (reply) => ({ statusCode: reply.statusCode }),
+            err: () => ({
+              type: "RequestFailure",
+              message: "Sanitized request failure",
+              stack: "",
+            }),
+          },
+        }
+      : false,
+    logController: new LogController({ disableRequestLogging: true }),
+    requestIdHeader: false,
+  });
+  app.register(cookie);
+  app.register(playerRoutes, players);
 
   app.get("/api/health", async () => ({ status: "ok" }));
 

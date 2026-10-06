@@ -8,17 +8,112 @@ Requires Node.js 24 and pnpm 12.9.1. From the project directory:
 
 ```sh
 pnpm install --frozen-lockfile
+if [ ! -e .env ]; then cp .env.example .env; fi
+docker compose up -d dynamodb
+pnpm db:setup
 pnpm dev
 ```
+
+Review `.env` before starting; preserve existing values rather than overwriting it.
+For the Compose service, use `DYNAMODB_ENDPOINT=http://127.0.0.1:8000`,
+`DYNAMODB_TABLE=btc-guesser-local`, and `AWS_REGION=us-east-1`.
+`.env` and other `.env.*` files are Git-ignored; `.env.example` is explicitly
+excluded from that ignore rule and should be committed as the setup template. Keep only
+safe sample values in the template, never real credentials.
 
 Open http://localhost:5173 for the starter screen. Verify the API at
 http://localhost:5173/api/health (through Vite's proxy), or directly at
 http://127.0.0.1:3000/api/health. Both return `{ "status": "ok" }`.
 
-**Implemented at T001:** React/Tailwind/shadcn starter, Fastify health endpoint,
-production frontend serving, and developer checks. Player identity, persistence,
-live pricing, and guessing are still planned; the starter button is disabled.
-No AWS credentials, DynamoDB setup, or Coinbase access is needed to run this setup.
+**Backend at T002:** session identity and DynamoDB player/active-guess persistence.
+Live pricing (T003), resolution/scoring (T004), and interface integration remain
+separate work. Runtime guess submission currently returns `price_unavailable`;
+there is no placeholder price. Health/static serving work without database config;
+player operations return `persistence_unavailable` in that case.
+
+### DynamoDB Local
+
+The quick start requires Docker (on this Mac, Colima). If `DOCKER_HOST` overrides
+the active context, use `docker --context colima compose up -d dynamodb` explicitly.
+`pnpm db:setup` waits up to 20 seconds, creates the configured table if absent,
+and never resets existing data. It uses the SDK; AWS CLI is not required.
+Stop with `docker compose stop dynamodb` (or the explicit Colima context).
+The named volume retains data; do not use `down -v` unless intentionally deleting it.
+
+`pnpm dev:server`, `pnpm start`, `pnpm db:setup`, and `pnpm test:integration` load
+`.env` using Node 24's built-in support. Do not commit `.env` or credentials.
+
+| Setting | Purpose |
+|---|---|
+| `DYNAMODB_TABLE` | Required player table; suggested local name is `btc-guesser-local` |
+| `DYNAMODB_ENDPOINT` | Local loopback URL, normally `http://127.0.0.1:8000`; omit for AWS |
+| `AWS_REGION` | Standard AWS region configuration; loopback client defaults to `us-east-1` |
+
+Dummy credentials are supplied only with an explicitly configured loopback local
+endpoint. AWS uses the SDK's standard region/credential chain; no runtime memory
+fallback exists. Do not add real AWS keys for local development; non-loopback
+`DYNAMODB_ENDPOINT` values are rejected. The table has a string partition key
+`playerId` and no sort key.
+For AWS, provision the table separately and grant the app only `dynamodb:GetItem`,
+`dynamodb:PutItem`, and `dynamodb:UpdateItem` on that table. Local setup additionally
+uses DescribeTable/CreateTable; the isolated integration command uses DeleteTable.
+
+### Player API contract
+
+All player responses use `Cache-Control: no-store`. Successful responses share:
+
+```json
+{"id":"server-generated UUID","displayName":"Ada","score":0,"activeGuess":null,"latestGuess":null}
+```
+
+| Operation | Request | Success |
+|---|---|---|
+| `POST /api/players` | `{"displayName":"Ada"}` | 201 new player; 200 existing valid session without resetting progress |
+| `GET /api/player` | Session cookie | 200 player state |
+| `POST /api/guesses` | `{"direction":"up"}` or `{"direction":"down"}` | 201 updated player state |
+
+Names are trimmed, must be nonempty, and are limited to 80 UTF-16 code units after
+trimming. Extra request fields are rejected. Matching names are not authentication.
+The `btc_player` cookie contains a private random credential alongside the public
+ID; only a digest is stored. It is HttpOnly, SameSite=Lax, Path=/, Secure in
+production, with no Max-Age/Expires. Losing the cookie loses access to the player.
+The same cookie and DynamoDB store restore state after reloads or backend restarts;
+this is not a password login or guaranteed identity after closing the browser.
+
+A pending guess contains `id`, `direction`, exact decimal-string `startingPrice`,
+and epoch-millisecond `acceptedAt`/`eligibleAt` (acceptance + 60,000). All are
+server-owned except direction. `latestGuess` remains null until T004 supplies
+resolution; T002 leaves an existing latest value unchanged and does not score.
+Acceptance atomically requires an existing player with no active guess; concurrent
+submissions cannot overwrite an active guess. Unavailable prices write no guess.
+
+Errors are JSON `{"error":"code"}`: 400 `invalid_display_name`,
+`invalid_direction`, or `invalid_body`; 401 `unauthorized`; 409 `active_guess`;
+413 `payload_too_large`; 415 `unsupported_media_type`; other framework client
+errors retain their status with `invalid_request`; 503 `price_unavailable` or
+`persistence_unavailable`. Database failures are not
+reported as conflicts and private credentials never appear in JSON.
+
+Player diagnostics log only fixed event/category/operation fields and server-issued
+request IDs. Unexpected storage/request failures use error level; missing config
+or unavailable/failed trusted prices use warning level. Repeats are limited to
+one failure per operation per minute per app instance; a successful operation
+logs one recovery. Healthy reads do not falsely announce recovery of failed
+writes. Routine validation/auth/conflict responses and successful operations do
+not add application logs. Automatic request logs are disabled; request/error
+serializers omit client URLs, headers, IPs, names, credentials, and raw errors.
+Seeded-secret logger tests verify categories, correlation, suppression and recovery.
+
+### Persistence verification
+
+`pnpm check` runs deterministic Fastify/Vitest session, validation, concurrency,
+and SDK command-contract tests without DynamoDB, AWS, or Coinbase.
+`pnpm test:integration` explicitly requires a running local endpoint; it fails
+if configuration/service is missing. It creates a unique test table, verifies
+real conditional-write concurrency and cookie/state continuity across app
+instances, then deletes only that test table. It never deletes the development
+table. Test prices are injected observations, not a runtime provider.
+This local check does not verify AWS IAM, deployment, or future scoring behavior.
 
 ### Developer commands
 
@@ -28,6 +123,8 @@ No AWS credentials, DynamoDB setup, or Coinbase access is needed to run this set
 | `pnpm dev:server` | Start only the API watcher |
 | `pnpm dev:client` | Start only Vite; run the API in another terminal |
 | `pnpm test` / `pnpm test:watch` | Run deterministic backend tests once / watch |
+| `pnpm db:setup` | Create the configured local table if absent; preserve existing data |
+| `pnpm test:integration` | Verify persistence against running DynamoDB Local using an isolated test table |
 | `pnpm lint` | Check formatting, lint rules, and imports with Biome |
 | `pnpm format` | Format application source and tooling configs |
 | `pnpm typecheck` | Check client, server, tests, and tooling TypeScript |
