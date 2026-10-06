@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "skills": {
+    "typescript-fastify": {
+      "source": "martinffx/typescript-skills",
+      "sourceType": "github",
+      "skillPath": "skills/typescript-fastify/SKILL.md",
+      "computedHash": "d7caa22504b16048edd19cf8fe9740997a7a88cfea17753779fb6eee157bb315"
+    },
+    "typescript-testing": {
+      "source": "martinffx/typescript-skills",
+      "sourceType": "github",
+      "skillPath": "skills/typescript-testing/SKILL.md",
+      "computedHash": "fb688a729eb3284f0f6ba69e06e3394c7346554b21ecd981920695a11df90fb8"
+    }
+  }
+}
