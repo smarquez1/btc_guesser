@@ -9,6 +9,7 @@ Read these sources before planning or implementing a task:
 | `docs/product-and-scope.md` | Game behavior, player identity, UX requirements, and scope boundaries |
 | `docs/technical-approach.md` | Architecture, technology choices, and reliability tradeoffs |
 | `docs/tasks/README.md` | Task order and current status; follow its linked prompt for the assigned task |
+| `docs/mockup.pen` | Game interface design reference; inspect with pen.dev tools when working on the UI |
 
 Keep product and architecture decisions in those documents, not in this file. If a task conflicts with them, clarify the conflict before implementing it.
 

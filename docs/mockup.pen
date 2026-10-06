@@ -1,0 +1,261 @@
+{
+  "version": "2.20",
+  "children": [
+    {
+      "type": "frame",
+      "id": "bi8Au",
+      "x": 0,
+      "y": 0,
+      "name": "BTC Guesser — Desktop 1280×720",
+      "clip": true,
+      "width": 1280,
+      "height": 720,
+      "fill": "#FFFFFF",
+      "layout": "vertical",
+      "children": [
+        {
+          "type": "frame",
+          "id": "GvoIY",
+          "name": "Centered desktop game",
+          "width": "fill_container",
+          "height": "fill_container",
+          "fill": "#FFFFFF",
+          "layout": "vertical",
+          "gap": 40,
+          "padding": [
+            72,
+            320
+          ],
+          "justifyContent": "center",
+          "alignItems": "center",
+          "children": [
+            {
+              "type": "frame",
+              "id": "PXyks",
+              "name": "Game title and player details",
+              "width": "fill_container",
+              "gap": 24,
+              "justifyContent": "space_between",
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "text",
+                  "id": "mHxII",
+                  "name": "App name",
+                  "fill": "#18181B",
+                  "content": "BTC Guesser",
+                  "fontFamily": "Geist",
+                  "fontSize": 20,
+                  "fontWeight": "600"
+                },
+                {
+                  "type": "frame",
+                  "id": "W4nlwx",
+                  "name": "Player and score",
+                  "gap": 12,
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "KHjwY",
+                      "name": "Player name",
+                      "fill": "#52525B",
+                      "content": "Alex",
+                      "fontFamily": "Geist",
+                      "fontSize": 16
+                    },
+                    {
+                      "type": "text",
+                      "id": "XkGbI",
+                      "name": "Player score",
+                      "fill": "#18181B",
+                      "content": "·  Score: 0",
+                      "fontFamily": "Geist",
+                      "fontSize": 16,
+                      "fontWeight": "500"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "ct7IN",
+              "name": "Price information",
+              "width": "fill_container",
+              "fill": "#FFFFFF",
+              "layout": "vertical",
+              "gap": 12,
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "text",
+                  "id": "OkMFJ",
+                  "name": "Price label",
+                  "fill": "#52525B",
+                  "content": "Latest BTC/USD price",
+                  "fontFamily": "Geist",
+                  "fontSize": 16
+                },
+                {
+                  "type": "text",
+                  "id": "XLqeH",
+                  "name": "Sample BTC price",
+                  "fill": "#18181B",
+                  "content": "$64,250.38",
+                  "lineHeight": 1.1,
+                  "fontFamily": "Geist",
+                  "fontSize": 80,
+                  "fontWeight": "600",
+                  "letterSpacing": -2.4
+                },
+                {
+                  "type": "text",
+                  "id": "LRd4M",
+                  "name": "Price sample disclosure",
+                  "fill": "#71717A",
+                  "content": "Sample data · not live",
+                  "fontFamily": "Geist",
+                  "fontSize": 14,
+                  "fontWeight": "normal"
+                }
+              ]
+            },
+            {
+              "type": "frame",
+              "id": "ShkHx",
+              "name": "Guessing actions and rules",
+              "width": 560,
+              "fill": "#FFFFFF",
+              "layout": "vertical",
+              "gap": 20,
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "text",
+                  "id": "Ha3ar",
+                  "name": "Guess direction prompt",
+                  "fill": "#18181B",
+                  "content": "Will Bitcoin go up or down?",
+                  "fontFamily": "Geist",
+                  "fontSize": 20,
+                  "fontWeight": "500"
+                },
+                {
+                  "type": "frame",
+                  "id": "PWpkn",
+                  "name": "Direction button row",
+                  "width": 400,
+                  "gap": 16,
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "LzSMt",
+                      "name": "Up button",
+                      "width": "fill_container",
+                      "height": 52,
+                      "fill": "#18181B",
+                      "cornerRadius": 6,
+                      "gap": 8,
+                      "justifyContent": "center",
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "pWPJP",
+                          "name": "Up button label",
+                          "fill": "#FAFAFA",
+                          "content": "Up",
+                          "fontFamily": "Geist",
+                          "fontSize": 16,
+                          "fontWeight": "500"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "qkNH1",
+                      "name": "Down button",
+                      "width": "fill_container",
+                      "height": 52,
+                      "fill": "#18181B",
+                      "cornerRadius": 6,
+                      "gap": 8,
+                      "justifyContent": "center",
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "text",
+                          "id": "S5ppG",
+                          "name": "Down button label",
+                          "fill": "#FAFAFA",
+                          "content": "Down",
+                          "fontFamily": "Geist",
+                          "fontSize": 16,
+                          "fontWeight": "500"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "kJd8C",
+                  "name": "Minimum wait and pending rules",
+                  "width": "fill_container",
+                  "layout": "vertical",
+                  "gap": 6,
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "N8kgM",
+                      "name": "Minimum wait rule",
+                      "fill": "#52525B",
+                      "textGrowth": "fixed-width",
+                      "width": "fill_container",
+                      "content": "After at least 60 seconds, your guess resolves with the first fresh price different from your starting price.",
+                      "lineHeight": 1.5,
+                      "textAlign": "center",
+                      "fontFamily": "Geist",
+                      "fontSize": 14
+                    },
+                    {
+                      "type": "text",
+                      "id": "drNAn",
+                      "name": "Resolution and pending explanation",
+                      "fill": "#52525B",
+                      "textGrowth": "fixed-width",
+                      "width": "fill_container",
+                      "content": "If the price is unchanged or unavailable, keep waiting.",
+                      "lineHeight": 1.5,
+                      "textAlign": "center",
+                      "fontFamily": "Geist",
+                      "fontSize": 14,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "text",
+              "id": "DYC24",
+              "name": "Scoring and single guess rule",
+              "fill": "#52525B",
+              "textGrowth": "fixed-width",
+              "width": "fill_container",
+              "content": "+1 correct · −1 incorrect · One active guess at a time",
+              "lineHeight": 1.5,
+              "textAlign": "center",
+              "fontFamily": "Geist",
+              "fontSize": 14,
+              "fontWeight": "normal"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "fileToken": "b5ad78ee-ce1d-4c03-ab24-dea183863cf5"
+}

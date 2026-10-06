@@ -1,8 +1,10 @@
 # T005 — Build the game interface
 
-**Goal:** Deliver the responsive interface for playing the game.
+**Goal:** Implement the responsive interface for playing the game.
 
-**Scope:** Create a basic layout mockup in pen.dev, then use standard shadcn/ui components and Tailwind for layout. Show score, BTC/USD price, Up/Down actions, active guess/countdown, result, and clear loading/stale/error states. Do not spend time on a custom theme.
+**Scope:** Use standard shadcn/ui components and Tailwind for layout. Show score, BTC/USD price, Up/Down actions, active guess/countdown, result, and clear loading/stale/error states. Implement mobile and desktop layouts. Do not spend time on a custom theme.
+
+**Design reference:** [../mockup.pen](../mockup.pen)
 
 **Dependencies:** T001. Coordinate against the API from T002–T004.
 
