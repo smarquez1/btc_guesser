@@ -4,13 +4,13 @@ This is the plain-text task index. Each linked file is a self-contained prompt t
 
 ## Must do — Ready
 
-- [ ] [T003 — Integrate BTC pricing and caching](T003-btc-pricing.md)
 - [ ] [T004 — Implement guess resolution and scoring](T004-game-rules.md)
 - [ ] [T006 — Verify the core journey](T006-testing.md)
 - [ ] [T007 — Deploy and document the demo](T007-deploy-and-readme.md)
 
 ## Must do — In progress
 
+- [ ] [T003 — Integrate BTC pricing and caching](T003-btc-pricing.md)
 - [ ] [T005 — Build the game interface](T005-game-interface.md)
 
 ## Must do — Done
@@ -23,6 +23,7 @@ This is the plain-text task index. Each linked file is a self-contained prompt t
 
 - [ ] [T101 — Remember players after the browser closes](T101-return-visits.md)
 - [ ] [T102 — Add a small leaderboard](T102-leaderboard.md)
+- [ ] [T103 — Automate CI checks](T103-ci-checks.md)
 
 ## Nice to have — In progress
 

@@ -50,11 +50,15 @@ attribute is stored. T004 will own conditional resolution and score updates.
 
 `POST /api/players`, `GET /api/player`, and `POST /api/guesses` return the same
 explicit public state: `id`, `displayName`, `score`, `activeGuess`, `latestGuess`.
+The planned T003 handoff adds `pricing` without changing these fields.
 README documents payloads, statuses, cookie policy, timestamps and configuration.
-An injected trusted-price source supplies an exact decimal string or unavailable;
-T003 owns observation validation/freshness and runtime caching. Until then the
-runtime source is unavailable, so guesses fail without writes. Tests inject price,
+T003's intended trusted-price source supplies `PriceObservation | null` with exact
+`price`, provider `providerTradeAt`, and server epoch-ms `receivedAt`;
+T003 owns observation validation/freshness and runtime caching. Unavailable trusted
+pricing makes submissions fail without writes. Tests inject price,
 clock and IDs; neither placeholder prices nor an in-memory runtime store are used.
+T003 implementation is currently stashed; the checked-out T002 runtime still uses
+an unavailable price source and does not expose the planned `pricing` field.
 
 Local development uses persistent DynamoDB Local storage via Compose. The SDK
 setup command is idempotent; the explicit integration command uses and cleans
@@ -67,3 +71,43 @@ operation per minute; confirmed recovery logs once. Separate read/write slots
 avoid false recovery during a write outage. Automatic request logs are disabled
 and serializers sanitize fallback errors; deterministic writable-stream tests
 check correlation and seeded-secret omission without a new logging dependency.
+
+## T003 pricing policies and handoff
+
+This section specifies the planned handoff, not delivered runtime behavior.
+T003 remains in progress; its source is preserved in the `t003 changes` stash.
+
+Use Coinbase Exchange's unauthenticated BTC-USD ticker GET endpoint:
+`https://api.exchange.coinbase.com/products/BTC-USD/ticker`. Its `time` identifies
+the last trade, not response generation. Retain that exact UTC ISO timestamp and
+the full decimal string. Reject impossible dates, non-UTC forms, trades older than
+120 seconds or more than 5 seconds in the future. Positive plain decimals are
+bounded to 128 characters; exact BigInt-scaled comparison handles leading zeros
+and differing precision, without floating-point price conversion.
+
+These limits are app policies, not provider guarantees. Trusted use must satisfy
+both receipt age ≤15 seconds and trade age ≤120 seconds (future tolerance ≤5
+seconds). A 5-second shared process cache preserves receipt time; every newly
+validated response records a new `receivedAt`, even for the same ticker. T004
+uses `receivedAt` for deadline eligibility; trade time is only context/freshness.
+Scoring/persistence ownership stays in T004/T002.
+
+Poll 5 seconds after the preceding operation settles, with one shared in-flight
+operation, a 3-second total fetch/body timeout and 5-second failure cooldown.
+Failure immediately invalidates trusted use while retaining last-known display
+data. Cache reads never renew freshness. Fastify `onReady` starts polling;
+`onClose` clears timers and aborts/settles active work. Ignored aborts cannot
+overwrite state via late completion, though the underlying transport cannot be
+forcibly stopped. No environment settings or extra infrastructure are introduced.
+
+T005 receives additive `pricing: { status, observation }` on the existing three
+successful player APIs. Status is `fresh`, `stale` (known but failed/expired), or
+`unavailable` (no valid observation, null). Observations are `{ price,
+providerTradeAt, receivedAt }`; display rounding must not affect comparison.
+Default `buildApp` remains offline; runtime injects the service using `app.log`.
+
+Structured diagnostics classify timeout, transport, HTTP, malformed payload,
+timestamp rejection, freshness expiry and recovery. Safe generated job IDs,
+elapsed time, receipt age and retry delay replace external payload/error text.
+Degradation warns at most once per 60 seconds; recovery logs info; routine
+polls/reads are silent. Tests exercise seeded secrets/names to prove redaction.
