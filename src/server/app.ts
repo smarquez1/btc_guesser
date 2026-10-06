@@ -6,19 +6,30 @@ import Fastify, {
   type FastifyServerOptions,
   LogController,
 } from "fastify";
-import { type PlayerOptions, playerRoutes } from "./players.js";
-import type { PricingService } from "./pricing.js";
+import {
+  type PlayerOptions,
+  type PlayerStore,
+  playerRoutes,
+} from "./players.js";
+import type { PriceObservation, PricingService } from "./pricing.js";
+import type { Resolver } from "./resolver.js";
 
 export interface AppOptions extends PlayerOptions {
   logger?: FastifyServerOptions["logger"];
   staticDir?: string;
   pricingService?: (log: FastifyBaseLogger) => PricingService;
+  resolverService?: (dependencies: {
+    log: FastifyBaseLogger;
+    store: PlayerStore;
+    trusted: () => Promise<PriceObservation | null>;
+  }) => Resolver;
 }
 
 export function buildApp({
   logger = false,
   staticDir,
   pricingService,
+  resolverService,
   ...players
 }: AppOptions = {}) {
   const app = Fastify({
@@ -46,10 +57,21 @@ export function buildApp({
     const pricing = pricingService(app.log);
     players.price = pricing.trusted;
     players.displayPricing = pricing.display;
+    // Resolution needs both a store and trusted observations; offline builds skip it.
+    const resolver =
+      players.store && resolverService
+        ? resolverService({
+            log: app.log,
+            store: players.store,
+            trusted: pricing.trusted,
+          })
+        : undefined;
     app.addHook("onReady", async () => {
       pricing.start();
+      resolver?.start();
     });
     app.addHook("onClose", async () => {
+      await resolver?.close();
       await pricing.close();
     });
   }

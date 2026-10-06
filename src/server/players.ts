@@ -15,20 +15,35 @@ export interface PendingGuess {
   acceptedAt: number;
   eligibleAt: number;
 }
+export interface GuessResolution {
+  result: "correct" | "incorrect";
+  scoreDelta: 1 | -1;
+  resolvedAt: number;
+  observedPrice: string;
+  observedAt: number;
+}
+export interface ResolvedGuess extends PendingGuess, GuessResolution {}
+export interface DueGuess {
+  playerId: string;
+  guess: PendingGuess;
+}
 export interface PlayerRecord {
   playerId: string;
   displayName: string;
   sessionDigest: string;
   score: number;
   activeGuess?: PendingGuess;
-  latestGuess?: PendingGuess;
+  latestGuess?: ResolvedGuess;
 }
 export interface PlayerStore {
   create(player: PlayerRecord): Promise<void>;
   get(playerId: string): Promise<PlayerRecord | undefined>;
   accept(playerId: string, guess: PendingGuess): Promise<PlayerRecord>;
+  due(now: number, limit: number): Promise<DueGuess[]>;
+  resolve(playerId: string, guess: ResolvedGuess): Promise<PlayerRecord>;
 }
 export class ActiveGuessConflict extends Error {}
+export class ObsoleteGuessConflict extends Error {}
 class StorageUnavailable extends Error {}
 export interface PlayerOptions {
   store?: PlayerStore;
@@ -44,16 +59,25 @@ export function digestToken(token: string) {
   return createHash("sha256").update(token).digest("hex");
 }
 export function publicPlayer(player: PlayerRecord) {
-  const guess = (value: PendingGuess | undefined) =>
-    value
-      ? {
-          id: value.id,
-          direction: value.direction,
-          startingPrice: value.startingPrice,
-          acceptedAt: value.acceptedAt,
-          eligibleAt: value.eligibleAt,
-        }
-      : null;
+  const guess = (value: PendingGuess | ResolvedGuess | undefined) => {
+    if (!value) return null;
+    const pending = {
+      id: value.id,
+      direction: value.direction,
+      startingPrice: value.startingPrice,
+      acceptedAt: value.acceptedAt,
+      eligibleAt: value.eligibleAt,
+    };
+    if (!("result" in value)) return pending;
+    return {
+      ...pending,
+      result: value.result,
+      scoreDelta: value.scoreDelta,
+      resolvedAt: value.resolvedAt,
+      observedPrice: value.observedPrice,
+      observedAt: value.observedAt,
+    };
+  };
   return {
     id: player.playerId,
     displayName: player.displayName,

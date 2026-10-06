@@ -4,9 +4,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { type AppOptions, buildApp } from "./app.js";
 import {
   ActiveGuessConflict,
-  type PendingGuess,
+  type DueGuess,
+  ObsoleteGuessConflict,
   type PlayerRecord,
   type PlayerStore,
+  type ResolvedGuess,
 } from "./players.js";
 import { createPricingService } from "./pricing.js";
 
@@ -24,6 +26,27 @@ function memoryStore() {
       const record = records.get(id);
       if (!record || record.activeGuess) throw new ActiveGuessConflict();
       record.activeGuess = guess;
+      return structuredClone(record);
+    }),
+    due: vi.fn(async (now, limit) => {
+      const due: DueGuess[] = [];
+      for (const record of records.values()) {
+        const active = record.activeGuess;
+        if (active && active.eligibleAt <= now && due.length < limit)
+          due.push({
+            playerId: record.playerId,
+            guess: structuredClone(active),
+          });
+      }
+      return due;
+    }),
+    resolve: vi.fn(async (id, guess) => {
+      const record = records.get(id);
+      if (!record?.activeGuess || record.activeGuess.id !== guess.id)
+        throw new ObsoleteGuessConflict();
+      record.score += guess.scoreDelta;
+      record.activeGuess = undefined;
+      record.latestGuess = structuredClone(guess);
       return structuredClone(record);
     }),
   };
@@ -90,6 +113,48 @@ describe("player API", () => {
     expect(fetch).toHaveBeenCalledOnce();
     await app.close();
     expect(close).toHaveBeenCalledOnce();
+  });
+  it("starts the resolver only with persistence and trusted pricing, and closes it during shutdown", async () => {
+    const { store } = memoryStore();
+    const now = Date.parse("2026-10-06T00:00:00Z");
+    const fetch = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ price: "1", time: new Date(now).toISOString() }),
+    }));
+    const events: string[] = [];
+    const resolver = {
+      start: () => events.push("resolver-start"),
+      close: async () => {
+        events.push("resolver-close");
+      },
+      sweep: async () => {},
+    };
+    const resolverService = vi.fn(() => {
+      events.push("resolver-created");
+      return resolver;
+    });
+    const app = setup({
+      store,
+      pricingService: (log) =>
+        createPricingService({ fetch, now: () => now, log }),
+      resolverService,
+    });
+    await app.ready();
+    expect(resolverService).toHaveBeenCalledOnce();
+    expect(events).toEqual(["resolver-created", "resolver-start"]);
+    await app.close();
+    expect(events).toEqual([
+      "resolver-created",
+      "resolver-start",
+      "resolver-close",
+    ]);
+    const offline = vi.fn(() => resolver);
+    await setup({
+      pricingService: (log) =>
+        createPricingService({ fetch, now: () => now, log }),
+      resolverService: offline,
+    }).ready();
+    expect(offline).not.toHaveBeenCalled();
   });
   it("shows stale last-known data without allowing a submission write", async () => {
     const { store } = memoryStore();
@@ -306,12 +371,17 @@ describe("player API", () => {
       }),
     });
     const { response, cookies } = await create(app);
-    const latest: PendingGuess = {
+    const latest: ResolvedGuess = {
       id: "previous",
       direction: "down",
       startingPrice: "1",
       acceptedAt: 0,
       eligibleAt: 60000,
+      result: "correct",
+      scoreDelta: 1,
+      resolvedAt: 61234,
+      observedPrice: "0.999",
+      observedAt: 61234,
     };
     const record = records.get(response.json().id);
     if (!record) throw new Error("Missing fixture");

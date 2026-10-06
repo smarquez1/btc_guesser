@@ -106,3 +106,46 @@ timestamp rejection, freshness expiry and recovery. Safe generated job IDs,
 elapsed time, receipt age and retry delay replace external payload/error text.
 Degradation warns at most once per 60 seconds; recovery logs info; routine
 polls/reads are silent. Tests exercise seeded secrets/names to prove redaction.
+
+## T004 resolution and scoring
+
+Guess resolution is a pure rule module (`src/server/resolution.ts`) separate from
+routes, storage, and scheduling. A guess is eligible only when server time and the
+observation's `receivedAt` are both at or after `eligibleAt` (acceptedAt + 60s);
+the provider trade timestamp is context, never an eligibility gate. T003's
+`comparePrices` compares full-precision values exactly: equal values keep the
+guess pending, and the first eligible differing observation decides the outcome.
+Up/Down scores +1/−1 from the rule module only; the browser never decides
+outcomes, and stale or unavailable observations never resolve.
+
+`PlayerStore.resolve` persists the outcome atomically: one conditional update pins
+`activeGuess.id`, adds the score delta, clears the active guess, and stores the
+latest resolved guess (direction, starting price, acceptance/deadline times,
+result, score delta, resolution time, observed price/receipt time). Overlapping
+workers, retries, or obsolete observations fail that condition and are classified
+as expected `ObsoleteGuessConflict` outcomes, never as infrastructure failures,
+so they cannot score twice or resolve a replacement guess.
+
+A bounded in-process resolver (`src/server/resolver.ts`) starts with the app when
+persistence and pricing are configured. It sweeps every 5 seconds after the
+previous sweep settles (no overlap) with a bounded scan page; each sweep shares
+one trusted observation and attempts one conditional write per differing guess.
+Discovery is a demo-scale DynamoDB scan: one page per sweep with an internal
+cursor that carries across sweeps and restarts, filtered to active guesses whose
+deadline passed. `Limit` bounds evaluated items per page (the filter runs after
+it), so a whole-table sweep costs O(n) per cycle at demo scale; no GSI, queue, or
+Lambda is introduced. The first sweep after start recovers persisted pending
+guesses from DynamoDB, never memory, so a restart or Render free-tier sleep only
+delays resolution until the service wakes. Persistence or provider failures leave
+guesses pending and retry on the next poll; shutdown stops scheduling and awaits
+in-flight work before pricing and the persistence client close.
+
+Resolver diagnostics log lifecycle start/stop, the first recovery sweep, and
+rate-limited degraded/recovered events per operation (discovery, provider,
+resolution) with fixed fields, bounded counts, elapsed time, and retry delay;
+expected obsolete-guess conflicts aggregate at info level. Raw errors, records,
+identifiers, prices, and provider payloads are never logged. Deterministic tests
+cover timing boundaries, pre-deadline moves, equal/stale/unavailable prices, both
+directions, concurrency, retry, restart discovery, cleanup, and seeded-secret
+redaction; `pnpm test:integration` adds genuine conditional-write and
+no-double-scoring evidence against DynamoDB Local.

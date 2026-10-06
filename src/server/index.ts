@@ -2,6 +2,7 @@ import { fileURLToPath } from "node:url";
 import { buildApp } from "./app.js";
 import { runtimePersistence } from "./dynamodb.js";
 import { createPricingService } from "./pricing.js";
+import { createResolver } from "./resolver.js";
 
 const production =
   process.env.NODE_ENV === "production" ||
@@ -12,6 +13,7 @@ const app = buildApp({
   store: persistence?.store,
   logger: true,
   pricingService: (log) => createPricingService({ log }),
+  resolverService: (dependencies) => createResolver(dependencies),
   staticDir: production
     ? fileURLToPath(new URL("../client/", import.meta.url))
     : undefined,
@@ -28,6 +30,10 @@ async function shutdown() {
   } catch (error) {
     app.log.error(error);
     process.exitCode = 1;
+  } finally {
+    // Root onClose hooks run newest-first, so the persistence client is closed
+    // only after the app's resolver/pricing hooks have settled.
+    persistence?.close();
   }
 }
 

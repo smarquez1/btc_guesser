@@ -1,5 +1,7 @@
 # T004 — Implement guess resolution and scoring
 
+**Status:** Done — implemented and verified on `main`; approved by the orchestrator after review and verification.
+
 **Goal:** Apply the assignment’s timing, comparison, one-active-guess, and scoring rules on the backend.
 
 **Dependencies:** [T002 — Player state](T002-player-state.md) and
@@ -75,6 +77,45 @@ independent cloud workers, and new UI work.
 - [ ] Required diagnostics distinguish expected write conflicts from failures,
   explain lifecycle/retry/recovery with bounded counts and noise, and demonstrate
   secret/game-record redaction.
+
+## Implementation handoff (2026-10-06)
+
+Implemented `src/server/resolution.ts` (pure timing/comparison rules using T003's
+`comparePrices`), `src/server/resolver.ts` (bounded poll-after-settle worker with
+injected clock/pricing/store/log), and `src/server/resolver-diagnostics.ts`
+(fixed-field, rate-limited lifecycle, degraded, recovery and expected-conflict
+events). `PlayerStore` gained `due` and `resolve`; the DynamoDB adapter implements
+bounded cursor-based scan discovery and the atomic conditional resolution write
+(`activeGuess.id` pinned; score delta, active clearing and `latestGuess` in one
+update), mapping conditional failures to expected `ObsoleteGuessConflict`.
+`buildApp` starts the resolver only with both persistence and trusted pricing and
+closes it before pricing; `index.ts` closes the persistence client after the app's
+`onClose` hooks settle (root hooks run newest-first). Player responses now expose
+`result`/`scoreDelta`/`resolvedAt`/`observedPrice`/`observedAt` on `latestGuess`.
+
+Discovery/recovery choices and the Render sleep limitation are recorded in
+[README](../../README.md#guess-resolution--t004) and the
+[technical approach](../technical-approach.md#t004-resolution-and-scoring):
+demo-scale single-page scans with a cursor that survives sweeps and restarts, a
+5-second poll after settle, a 100-evaluated-item page bound, first-sweep recovery
+from DynamoDB rather than memory, and no GSI/queue/Lambda.
+
+Verification performed with Node.js 24 and pnpm 12.9.1, against the already-running
+loopback DynamoDB Local (no infrastructure was started and no real AWS was used):
+
+- `pnpm check`: Biome (34 files), all TypeScript projects, all 89 Vitest tests passed across 7 files.
+- `pnpm test:integration`: passed; due discovery plus conditional resolution scored once without double counting; only its unique temporary test table was created and deleted.
+- `pnpm build`: client and server build passed.
+
+Deterministic tests cover deadline boundaries and pre-deadline receipts, provider
+trade-time context, equal/leading-zero/tiny-difference comparisons, both
+directions, provider/stale/unavailable handling, expected obsolete conflicts,
+discovery/resolution failure classification with 60-second rate limits and
+recovery, non-overlapping scheduling, restart discovery, shutdown cleanup, and
+seeded-secret/fixed-field redaction. The integration command supplies genuine
+DynamoDB Local evidence for conditional writes and concurrent no-double-scoring,
+separate from mocked boundary tests. This ticket update is documentation-only and
+follows the verification above.
 
 ## Verification to report
 

@@ -5,7 +5,12 @@ import { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
 import { buildApp } from "./app.js";
 import { createDynamoClient, DynamoPlayerStore } from "./dynamodb.js";
 import { ensureTable, requireLocalEndpoint } from "./local-table.js";
-import { ActiveGuessConflict, type PendingGuess } from "./players.js";
+import {
+  ActiveGuessConflict,
+  ObsoleteGuessConflict,
+  type PendingGuess,
+  type ResolvedGuess,
+} from "./players.js";
 
 requireLocalEndpoint();
 const table = `btc-guesser-test-${randomUUID()}`;
@@ -52,6 +57,88 @@ try {
       rejected.reason instanceof ActiveGuessConflict,
   );
   assert.ok((await store.get(atomicId))?.activeGuess);
+  // Genuine resolution: due discovery, atomic scoring, and no double counting.
+  const resolveId = randomUUID();
+  await store.create({
+    playerId: resolveId,
+    displayName: "Resolve test",
+    sessionDigest: "test-only",
+    score: 0,
+  });
+  const dueGuess: PendingGuess = {
+    id: randomUUID(),
+    direction: "up",
+    startingPrice: "1.000000001",
+    acceptedAt: 1000,
+    eligibleAt: 2000,
+  };
+  await store.accept(resolveId, dueGuess);
+  const discovered = await store.due(61000, 10);
+  assert.ok(
+    discovered.some(
+      (entry) => entry.playerId === resolveId && entry.guess.id === dueGuess.id,
+    ),
+    "eligible guess should be discovered by due()",
+  );
+  const resolution: ResolvedGuess = {
+    ...dueGuess,
+    result: "correct",
+    scoreDelta: 1,
+    resolvedAt: 61000,
+    observedPrice: "1.000000002",
+    observedAt: 61000,
+  };
+  const resolvedPlayer = await store.resolve(resolveId, resolution);
+  assert.equal(resolvedPlayer.score, 1);
+  assert.equal(resolvedPlayer.activeGuess, undefined);
+  assert.equal(resolvedPlayer.latestGuess?.id, dueGuess.id);
+  assert.equal(resolvedPlayer.latestGuess?.result, "correct");
+  await assert.rejects(
+    store.resolve(resolveId, resolution),
+    (error) => error instanceof ObsoleteGuessConflict,
+  );
+  assert.equal((await store.get(resolveId))?.score, 1);
+  // Concurrent duplicates on a fresh guess: exactly one score change.
+  const duplicateId = randomUUID();
+  await store.create({
+    playerId: duplicateId,
+    displayName: "Duplicate test",
+    sessionDigest: "test-only",
+    score: 0,
+  });
+  const duplicateGuess: PendingGuess = {
+    id: randomUUID(),
+    direction: "down",
+    startingPrice: "1.000000001",
+    acceptedAt: 1000,
+    eligibleAt: 2000,
+  };
+  await store.accept(duplicateId, duplicateGuess);
+  const duplicateResolution: ResolvedGuess = {
+    ...duplicateGuess,
+    result: "incorrect",
+    scoreDelta: -1,
+    resolvedAt: 61000,
+    observedPrice: "1.000000001",
+    observedAt: 61000,
+  };
+  const duplicates = await Promise.allSettled([
+    store.resolve(duplicateId, duplicateResolution),
+    store.resolve(duplicateId, duplicateResolution),
+  ]);
+  assert.equal(
+    duplicates.filter((result) => result.status === "fulfilled").length,
+    1,
+  );
+  assert.equal(
+    duplicates.filter(
+      (result) =>
+        result.status === "rejected" &&
+        result.reason instanceof ObsoleteGuessConflict,
+    ).length,
+    1,
+  );
+  assert.equal((await store.get(duplicateId))?.score, -1);
   const created = await app.inject({
     method: "POST",
     url: "/api/players",
@@ -84,7 +171,7 @@ try {
   assert.equal(restored.statusCode, 200, restored.body);
   assert.deepEqual(restored.json(), accepted);
   console.info(
-    "DynamoDB Local integration passed: session/state restored across app instances; concurrent conditional update accepted once.",
+    "DynamoDB Local integration passed: session/state restored across app instances; concurrent conditional update accepted once; due discovery plus conditional resolution scored once without double counting.",
   );
 } finally {
   await app.close();

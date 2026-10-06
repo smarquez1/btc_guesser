@@ -25,11 +25,11 @@ Open http://localhost:5173 for the starter screen. Verify the API at
 http://localhost:5173/api/health (through Vite's proxy), or directly at
 http://127.0.0.1:3000/api/health. Both return `{ "status": "ok" }`.
 
-**Backend:** session identity, DynamoDB player/active-guess persistence, and shared
-Coinbase pricing. Resolution/scoring (T004) and interface integration remain
-separate work. Runtime guess submission requires trusted pricing and returns
-`price_unavailable` without writes during degradation; there is no placeholder
-price. Health/static serving work without database config;
+**Backend:** session identity, DynamoDB player/active-guess persistence, shared
+Coinbase pricing, and background guess resolution/scoring. Interface integration
+remains separate work. Runtime guess submission requires trusted pricing and
+returns `price_unavailable` without writes during degradation; there is no
+placeholder price. Health/static serving work without database config;
 player operations return `persistence_unavailable` in that case.
 
 ### DynamoDB Local
@@ -83,9 +83,11 @@ this is not a password login or guaranteed identity after closing the browser.
 
 A pending guess contains `id`, `direction`, exact decimal-string `startingPrice`,
 and epoch-millisecond `acceptedAt`/`eligibleAt` (acceptance + 60,000). All are
-server-owned except direction. `latestGuess` remains null until T004 supplies
-resolution; T002 leaves an existing latest value unchanged and does not score.
-Acceptance atomically requires an existing player with no active guess; concurrent
+server-owned except direction. Once resolved, `latestGuess` adds `result`
+(`correct`/`incorrect`), `scoreDelta` (`1`/`-1`), `resolvedAt`, and the resolving
+observation's exact `observedPrice`/`observedAt` (server receipt time). Scoring is
+server-owned; the interface must not apply a local score change. Acceptance
+atomically requires an existing player with no active guess; concurrent
 submissions cannot overwrite an active guess. Unavailable prices write no guess.
 
 Errors are JSON `{"error":"code"}`: 400 `invalid_display_name`,
@@ -159,16 +161,58 @@ exception text, names, or cookies in pricing logs. Deterministic tests inject
 fetch/time, use fake timers, and capture seeded-secret diagnostics; they never
 contact Coinbase. Local checks do not establish live provider/deployment health.
 
+### Guess resolution — T004
+
+Resolution is a pure rule separate from Fastify, storage, and scheduling
+(`src/server/resolution.ts`). A guess is eligible only when server time and the
+trusted observation's `receivedAt` are both at or after `eligibleAt`; the provider
+trade timestamp is context, never an eligibility gate. Full-precision values are
+compared exactly: equal prices keep the guess pending, and the first eligible
+differing observation decides `correct` (`+1`) or `incorrect` (`−1`). Stale or
+unavailable observations never resolve a guess, and a move before the deadline
+counts if the price is still different when checked after it.
+
+A bounded in-process resolver (`src/server/resolver.ts`) starts with the app when
+both persistence and pricing are configured. It runs one sweep every 5 seconds
+after the previous sweep settles (never overlapping), discovers due guesses, reads
+one shared trusted observation per sweep, and attempts one conditional write per
+differing guess. The write pins `activeGuess.id`, adds the score delta, clears the
+active guess, and stores the resolved `latestGuess` atomically, so repeated or
+concurrent attempts and obsolete guesses get an expected `ObsoleteGuessConflict`
+and cannot score twice or resolve a replacement. Equal prices and provider
+failures leave the guess pending for a later sweep.
+
+Discovery is a demo-scale DynamoDB scan: one page per sweep with an internal
+cursor that carries across sweeps and restarts. `Limit` bounds evaluated items per
+page (the filter runs after it), so a whole-table sweep costs O(n) per cycle at
+demo scale; no GSI, queue, or Lambda is added. The first sweep after start
+recovers pending guesses from DynamoDB rather than memory, so a backend restart or
+a Render free-tier sleep only delays resolution until the service wakes.
+`app.close()` stops scheduling and awaits in-flight work before pricing closes,
+and the persistence client closes after those hooks settle.
+
+Resolver diagnostics log start/stop, the first recovery sweep, and rate-limited
+degraded/recovered events per operation (discovery, provider, resolution) with
+fixed fields, bounded counts, elapsed time, and retry delay; expected obsolete
+conflicts aggregate at info level. Raw errors, records, identifiers, prices, and
+provider payloads are never logged. `pnpm test:integration` verifies due
+discovery, atomic scoring, and no double counting under concurrent resolution
+against DynamoDB Local; deterministic tests cover timing boundaries, pre-deadline
+moves, equal/stale/unavailable prices, both directions, retries, restart recovery,
+and shutdown without live prices or real-minute waits.
+
 ### Persistence verification
 
 `pnpm check` runs deterministic Fastify/Vitest session, validation, concurrency,
-and SDK command-contract tests without DynamoDB, AWS, or Coinbase.
+resolution, worker, and SDK command-contract tests without DynamoDB, AWS, or
+Coinbase.
 `pnpm test:integration` explicitly requires a running local endpoint; it fails
 if configuration/service is missing. It creates a unique test table, verifies
 real conditional-write concurrency and cookie/state continuity across app
-instances, then deletes only that test table. It never deletes the development
-table. Test prices are injected observations, not a runtime provider.
-This local check does not verify AWS IAM, deployment, or future scoring behavior.
+instances, checks due discovery plus atomic scoring with no double counting under
+concurrent resolution, then deletes only that test table. It never deletes the
+development table. Test prices are injected observations, not a runtime provider.
+This local check does not verify AWS IAM or deployment.
 
 ### Developer commands
 
@@ -237,6 +281,7 @@ This is a local run, not a public deployment.
 | `src/client/` | React starter, Tailwind CSS, and locally copied shadcn Button |
 | `src/server/app.ts` | Testable Fastify factory, health route, and static serving |
 | `src/server/index.ts` | Server startup, environment configuration, and shutdown |
+| `src/server/resolution.ts` / `resolver.ts` | Pure guess rules and the bounded background resolver |
 | `src/server/app.test.ts` | Health, static assets, SPA, and API404 tests |
 | `vite.config.ts` / `tsconfig*.json` | Frontend proxy, `@` client alias, and TypeScript build boundaries |
 | `docs/` | Product/architecture decisions and task tracking |

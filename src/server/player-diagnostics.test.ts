@@ -39,6 +39,8 @@ function fixture() {
     accept: vi.fn(async () => {
       throw new ActiveGuessConflict();
     }),
+    due: vi.fn(async () => []),
+    resolve: vi.fn(async () => player),
   };
   const logs = () =>
     output.trim()
