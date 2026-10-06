@@ -57,6 +57,7 @@ An injected trusted-price source supplies `PriceObservation | null` with exact
 T003 owns observation validation/freshness and runtime caching. Unavailable trusted
 pricing makes submissions fail without writes. Tests inject price,
 clock and IDs; neither placeholder prices nor an in-memory runtime store are used.
+A new guess's `startingPrice` is the current trusted price at acceptance.
 
 Local development uses persistent DynamoDB Local storage via Compose. The SDK
 setup command is idempotent; the explicit integration command uses and cleans

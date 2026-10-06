@@ -13,6 +13,23 @@ Read these sources before planning or implementing a task:
 
 Keep product and architecture decisions in those documents, not in this file. If a task conflicts with them, clarify the conflict before implementing it.
 
+### Game rules
+
+- The player can at all times see their current score and the latest available BTC price in USD
+- The player can choose to enter a guess of either “up” or “down“
+- After a guess is entered, the player cannot make new guesses until the existing guess is resolved
+- The guess is resolved when the price changes and at least 60 seconds have passed since the guess was made
+- If the guess is correct (up = price went higher, down = price went lower), the user gets 1 point added to their score. If the guess is incorrect, the user loses 1 point.
+- Players can only make one guess at a time
+- New players start with a score of 0
+
+### Solution requirements
+
+- The guesses should be resolved fairly using BTC price data from any available 3rd party API
+- The score of each player should be persisted in a backend data store (AWS services preferred)
+- Please provide us a link to your deployed solution.
+- Optional: Players should be able to close their browser and return back to see their score and continue to make more guesses
+
 ## Working rules
 
 - Keep changes focused on the assigned task and follow existing project conventions.
@@ -28,6 +45,29 @@ Keep product and architecture decisions in those documents, not in this file. If
 - Make tests deterministic with injected time and price data. Do not depend on live Coinbase responses or wait a real minute in tests.
 - Run the relevant checks for each change and report what ran and what passed.
 - Do not mark tasks complete or claim deployment, a public repository, or final documentation exists without verifying it. Follow the deployment task for the final README requirements.
+
+### Test authoring during iteration
+
+- Do not author new tests while a feature's behavior or UI is still being iterated
+  or awaiting user acceptance. In that phase, implement and verify manually
+  (browser/CLI) and keep moving; do not add a test suite for behavior that is
+  still changing.
+- Add or update the deterministic tests for a change only once the user has
+  accepted the behavior and the work is being prepared for commit. The pre-commit
+  hook still runs the full suite, so the tests must exist and pass before commit.
+- When tests are deferred, say so explicitly and list the tests still owed so they
+  are not lost. Updating an existing test that no longer compiles (for example a
+  changed action shape) is not "new test authoring" and should still be done.
+
+### Linting and checks during iteration
+
+- Do not run linters or formatters (Biome) proactively while a feature is still
+  being iterated. Lefthook runs Biome on commit and re-stages safe fixes, so
+  formatting/lint issues are handled there.
+- Defer full type checks and the test suite to commit time as well (Lefthook runs
+  them), unless an error actually blocks the current work.
+- Run lint/type checks only when the user asks, or when a failure prevents the app
+  from running.
 
 ## Developer workflow
 

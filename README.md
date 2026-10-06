@@ -83,7 +83,8 @@ this is not a password login or guaranteed identity after closing the browser.
 
 A pending guess contains `id`, `direction`, exact decimal-string `startingPrice`,
 and epoch-millisecond `acceptedAt`/`eligibleAt` (acceptance + 60,000). All are
-server-owned except direction. Once resolved, `latestGuess` adds `result`
+server-owned except direction. `startingPrice` is the current trusted price at
+acceptance. Once resolved, `latestGuess` adds `result`
 (`correct`/`incorrect`), `scoreDelta` (`1`/`-1`), `resolvedAt`, and the resolving
 observation's exact `observedPrice`/`observedAt` (server receipt time). Scoring is
 server-owned; the interface must not apply a local score change. Acceptance

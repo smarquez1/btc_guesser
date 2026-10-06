@@ -466,3 +466,30 @@ describe("player API", () => {
     expect(result.json()).toEqual({ error: "persistence_unavailable" });
   });
 });
+describe("guess acceptance window", () => {
+  it("sets the eligibility window to 60000 from acceptance", async () => {
+    const { store } = memoryStore();
+    const observation = {
+      price: "43210.5",
+      providerTradeAt: "2026-10-06T00:00:00Z",
+      receivedAt: 1000,
+    };
+    const app = setup({
+      store,
+      now: () => 1000,
+      price: async () => observation,
+    });
+    const { cookies } = await create(app);
+    const guess = await app.inject({
+      method: "POST",
+      url: "/api/guesses",
+      cookies,
+      payload: { direction: "up" },
+    });
+    expect(guess.statusCode).toBe(201);
+    const active = guess.json().activeGuess;
+    expect(active.startingPrice).toBe(observation.price);
+    expect(active.acceptedAt).toBe(1000);
+    expect(active.eligibleAt - active.acceptedAt).toBe(60000);
+  });
+});
