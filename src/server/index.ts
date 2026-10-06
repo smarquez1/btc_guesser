@@ -18,9 +18,6 @@ const app = buildApp({
     ? fileURLToPath(new URL("../client/", import.meta.url))
     : undefined,
 });
-app.addHook("onClose", async () => {
-  persistence?.close();
-});
 const port = Number(process.env.PORT ?? 3000);
 const host = process.env.HOST ?? (production ? "0.0.0.0" : "127.0.0.1");
 
@@ -31,8 +28,8 @@ async function shutdown() {
     app.log.error(error);
     process.exitCode = 1;
   } finally {
-    // Root onClose hooks run newest-first, so the persistence client is closed
-    // only after the app's resolver/pricing hooks have settled.
+    // app.close() drains every onClose hook (resolver and pricing settle here)
+    // before this final close of the persistence client.
     persistence?.close();
   }
 }
