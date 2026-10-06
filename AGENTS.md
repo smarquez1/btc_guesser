@@ -18,6 +18,7 @@ Keep product and architecture decisions in those documents, not in this file. If
 - Keep changes focused on the assigned task and follow existing project conventions.
 - Track work in `docs/tasks/`; update status after reviewing and verifying the work. Do not create GitHub Issues for project tracking.
 - Prefer the smallest implementation that meets the documented requirements. Do not expand scope or add dependencies without a clear need.
+- Comment sparingly on non-obvious rationale, invariants, or tradeoffs that code alone does not convey. Avoid narrating obvious code, and keep comments accurate when behavior changes.
 
 ## Implementation and verification
 
@@ -32,8 +33,13 @@ Keep product and architecture decisions in those documents, not in this file. If
 
 - Use Node.js 24 and pnpm only. Keep `packageManager` pinned to `pnpm@12.9.1`; commit `pnpm-lock.yaml`, not npm or Yarn lockfiles.
 - Install the recorded dependencies with `pnpm install --frozen-lockfile`. When intentionally changing dependencies, update the pnpm lockfile and keep build-script approvals narrowly scoped.
+- For local persistence, copy `.env.example` to `.env` only if `.env` is missing; preserve existing values and never print secrets. `.env`/`.env.*` are ignored, with `.env.example` explicitly excepted; commit only safe sample values in that template, never real credentials.
+- Follow README local setup: Compose binds DynamoDB Local to `http://127.0.0.1:8000`; configure `DYNAMODB_ENDPOINT`, `DYNAMODB_TABLE`, and `AWS_REGION`, then run `pnpm db:setup`. It creates a missing table without resetting existing data. Do not start infrastructure or delete volumes without authorization.
+- The server, database setup, and integration commands load `.env`. Local loopback clients supply dummy credentials internally; do not add real AWS keys for local development. For AWS, omit `DYNAMODB_ENDPOINT` and use the standard SDK credential/configuration chain; see README for permissions.
 - Start both development servers with `pnpm dev`; see README for separate-server commands and port overrides.
 - Keep the development API on port 3000: Vite's `/api` proxy is fixed to `http://127.0.0.1:3000`. `PORT`/`HOST` still configure Fastify, including production runs.
-- Pre-commit runs Biome safe fixes (`check --write`, no `--unsafe`) and re-stages them before project type checks. Lefthook preserves unstaged edits in partially staged files; unresolved TypeScript errors block the hook and need manual correction.
+- Pre-commit runs serially: Biome safe fixes (`check --write`, no `--unsafe`) on matching staged files and re-staging, project type checks for TS/TSX/JSON changes, then unconditional `pnpm test` and `pnpm test:integration`. Lefthook preserves unstaged edits in partially staged files; check/test failures block the hook.
+- Integration requires a configured, running loopback DynamoDB Local service, including for documentation-only commits. It creates a unique test table and cleans up only that table, never the development table. Report missing configuration/service as a blocker; do not silently skip it or claim mocked tests verify persistence.
 - Run `pnpm check` (Biome, TypeScript, Vitest) and `pnpm build` for setup or integration changes. Report their actual results before marking work complete.
 - Diagnose TypeScript errors with `pnpm typecheck` and formatting/lint issues with `pnpm lint`. Fix the underlying cause rather than weakening strict mode or adding blanket suppressions; add lint rules only for demonstrated problems. When adding maintained source or tooling files, keep Biome's `files.includes` coverage current.
+- `tsconfig.json` is the root editor solution; split client/server/tools projects extend `tsconfig.base.json`. Keep strict options shared and server NodeNext ESM settings intact. Use workspace TypeScript and reload the language server after config changes rather than removing valid top-level await to mask project-selection errors.

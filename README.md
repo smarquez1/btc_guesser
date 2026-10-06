@@ -132,12 +132,23 @@ This local check does not verify AWS IAM, deployment, or future scoring behavior
 | `pnpm build` | Type-check and build `dist/client` and `dist/server` |
 | `pnpm start` | Serve the built frontend and API; run `pnpm build` first |
 
-Installation enables Lefthook when Git is available. Pre-commit runs Biome's
+Installation enables Lefthook when Git is available. Pre-commit runs serially: Biome's
 safe fixes (`check --write`, never `--unsafe`) on staged TS/TSX/JS/JSX/JSON/CSS
 files and re-stages the fixes, then runs project type checks for TS/TSX/JSON
-changes. TypeScript errors block the hook; Biome does not repair arbitrary type
+changes, followed by `pnpm test` and `pnpm test:integration` on every commit,
+regardless of file type. Integration requires a running loopback DynamoDB Local
+service and `DYNAMODB_ENDPOINT` configured via `.env` or the environment (see
+local setup above); missing configuration or a stopped service blocks the hook.
+It creates and deletes only a unique test table, not the development table.
+Check or test failures block the hook; Biome does not repair arbitrary type
 errors. Lefthook temporarily hides unstaged edits in partially staged files and
 restores them afterward, keeping those edits out of the commit.
+
+`tsconfig.json` is an editor solution referencing client, server, and tooling
+projects; shared strict options live in `tsconfig.base.json`. `pnpm typecheck`
+checks each split project explicitly. Use the workspace TypeScript version and
+restart the editor language server after configuration changes; preserve the
+server's NodeNext ESM settings and top-level await.
 
 ### Ports and configuration
 

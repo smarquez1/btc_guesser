@@ -6,3 +6,12 @@ coverage/
 !.env.example
 .DS_Store
 *.tsbuildinfo
+
+# Local agent configuration and workspace files
+/.slim/
+/opencode.json
+
+# BEGIN oh-my-opencode-slim worktrees
+.slim/worktrees/
+.slim/worktrees.json
+# END oh-my-opencode-slim worktrees

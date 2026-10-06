@@ -10,3 +10,9 @@ pre-commit:
       priority: 2
       glob: "*.{ts,tsx,json}"
       run: pnpm typecheck
+    test:
+      priority: 3
+      run: pnpm test
+    integration:
+      priority: 4
+      run: pnpm test:integration
