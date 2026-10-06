@@ -8,6 +8,7 @@ coverage/
 *.tsbuildinfo
 
 # Local agent configuration and workspace files
+/.ignore
 /.slim/
 /opencode.json
 
