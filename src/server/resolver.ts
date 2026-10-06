@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import type { ResolverLog } from "./log.js";
 import {
   type DueGuess,
   ObsoleteGuessConflict,
@@ -9,12 +10,6 @@ import { resolveGuess } from "./resolution.js";
 import { resolverDiagnostics } from "./resolver-diagnostics.js";
 
 export const resolverPolicy = { pollMs: 5_000, batchLimit: 100 } as const;
-
-export interface ResolverLog {
-  info(fields: Record<string, unknown>, message: string): void;
-  warn(fields: Record<string, unknown>, message: string): void;
-  error(fields: Record<string, unknown>, message: string): void;
-}
 
 export interface ResolverOptions {
   store: PlayerStore;

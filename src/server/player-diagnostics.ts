@@ -1,4 +1,5 @@
 import type { FastifyRequest } from "fastify";
+import { createLogThrottle } from "./throttle.js";
 
 type Operation =
   | "storage_read"
@@ -15,13 +16,10 @@ type Category =
 
 export function playerDiagnostics(now: () => number) {
   // Separate read/write slots prevent a good read from announcing write recovery.
-  const degraded = new Map<Operation, number>();
+  const throttle = createLogThrottle(now);
   return {
     failed(request: FastifyRequest, operation: Operation, category: Category) {
-      const time = now();
-      const previous = degraded.get(operation);
-      if (previous !== undefined && time - previous < 60_000) return;
-      degraded.set(operation, time);
+      if (!throttle.allow(operation)) return;
       const fields = {
         event: "player_operation_degraded",
         category,
@@ -40,7 +38,7 @@ export function playerDiagnostics(now: () => number) {
         );
     },
     recovered(request: FastifyRequest, operation: Operation) {
-      if (!degraded.delete(operation)) return;
+      if (!throttle.clear(operation)) return;
       request.log.info(
         {
           event: "player_operation_recovered",

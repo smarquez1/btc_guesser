@@ -94,6 +94,32 @@ function singleField(body: unknown, key: string): unknown {
     ? Reflect.get(body, key)
     : undefined;
 }
+// Fastify framework errors are duck-typed: they carry a string `code` and a
+// numeric 4xx `statusCode`. Returns that status for recognized client errors.
+function frameworkErrorStatus(error: unknown): number | undefined {
+  if (
+    error instanceof Error &&
+    "code" in error &&
+    typeof error.code === "string" &&
+    error.code.startsWith("FST_ERR_") &&
+    "statusCode" in error &&
+    typeof error.statusCode === "number" &&
+    Number.isInteger(error.statusCode) &&
+    error.statusCode >= 400 &&
+    error.statusCode < 500
+  )
+    return error.statusCode;
+  return undefined;
+}
+function statusToErrorCode(status: number): string {
+  return status === 400
+    ? "invalid_body"
+    : status === 413
+      ? "payload_too_large"
+      : status === 415
+        ? "unsupported_media_type"
+        : "invalid_request";
+}
 export async function playerRoutes(
   app: FastifyInstance,
   options: PlayerOptions,
@@ -143,27 +169,9 @@ export async function playerRoutes(
   app.setErrorHandler((error, request, reply) => {
     if (error instanceof ActiveGuessConflict)
       return reply.code(409).send({ error: "active_guess" });
-    if (
-      error instanceof Error &&
-      "code" in error &&
-      typeof error.code === "string" &&
-      error.code.startsWith("FST_ERR_") &&
-      "statusCode" in error &&
-      typeof error.statusCode === "number" &&
-      Number.isInteger(error.statusCode) &&
-      error.statusCode >= 400 &&
-      error.statusCode < 500
-    ) {
-      const code =
-        error.statusCode === 400
-          ? "invalid_body"
-          : error.statusCode === 413
-            ? "payload_too_large"
-            : error.statusCode === 415
-              ? "unsupported_media_type"
-              : "invalid_request";
-      return reply.code(error.statusCode).send({ error: code });
-    }
+    const status = frameworkErrorStatus(error);
+    if (status !== undefined)
+      return reply.code(status).send({ error: statusToErrorCode(status) });
     if (!(error instanceof StorageUnavailable))
       diagnostics.failed(request, "request", "request_failure");
     // Error objects/messages can contain private item or provider values.

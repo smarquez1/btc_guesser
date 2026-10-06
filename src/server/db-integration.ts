@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { DeleteTableCommand } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
 import { buildApp } from "./app.js";
+import { isAwsError } from "./aws-error.js";
 import { createDynamoClient, DynamoPlayerStore } from "./dynamodb.js";
 import { ensureTable, requireLocalEndpoint } from "./local-table.js";
 import {
@@ -163,6 +164,7 @@ try {
     [201, 409],
   );
   const accepted = results.find((result) => result.statusCode === 201)?.json();
+  assert.ok(accepted);
   assert.equal(accepted.activeGuess.startingPrice, "123.000000001");
   assert.equal(accepted.activeGuess.eligibleAt, 61000);
   await app.close();
@@ -181,9 +183,7 @@ try {
       abortSignal: AbortSignal.timeout(2_000),
     });
   } catch (error) {
-    if (
-      !(error instanceof Error && error.name === "ResourceNotFoundException")
-    ) {
+    if (!isAwsError(error, "ResourceNotFoundException")) {
       console.error(`Could not clean integration table ${table}`, error);
       process.exitCode = 1;
     }

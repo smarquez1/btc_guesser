@@ -4,6 +4,7 @@ import {
   DescribeTableCommand,
   type DynamoDBClient,
 } from "@aws-sdk/client-dynamodb";
+import { isAwsError } from "./aws-error.js";
 
 export function requireLocalEndpoint() {
   if (!process.env.DYNAMODB_ENDPOINT)
@@ -23,10 +24,7 @@ export async function ensureTable(client: DynamoDBClient, table: string) {
       if (result.Table?.TableStatus === "ACTIVE") return;
     } catch (error) {
       lastError = error;
-      if (
-        error instanceof Error &&
-        error.name === "ResourceNotFoundException"
-      ) {
+      if (isAwsError(error, "ResourceNotFoundException")) {
         try {
           await client.send(
             new CreateTableCommand({
@@ -40,12 +38,7 @@ export async function ensureTable(client: DynamoDBClient, table: string) {
             { abortSignal: AbortSignal.timeout(2_000) },
           );
         } catch (createError) {
-          if (
-            !(
-              createError instanceof Error &&
-              createError.name === "ResourceInUseException"
-            )
-          )
+          if (!isAwsError(createError, "ResourceInUseException"))
             lastError = createError;
         }
       }

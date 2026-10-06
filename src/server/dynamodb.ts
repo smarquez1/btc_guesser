@@ -7,6 +7,7 @@ import {
   type ScanCommandOutput,
   UpdateCommand,
 } from "@aws-sdk/lib-dynamodb";
+import { isAwsError } from "./aws-error.js";
 import {
   ActiveGuessConflict,
   ObsoleteGuessConflict,
@@ -15,6 +16,15 @@ import {
   type PlayerStore,
   type ResolvedGuess,
 } from "./players.js";
+
+const ACTIVE_GUESS_NAMES = { "#active": "activeGuess" } as const;
+
+function updatedPlayer(result: {
+  Attributes?: Record<string, unknown>;
+}): PlayerRecord {
+  if (!result.Attributes) throw new Error("DynamoDB update returned no player");
+  return result.Attributes as unknown as PlayerRecord;
+}
 
 export function createDynamoClient(endpoint = process.env.DYNAMODB_ENDPOINT) {
   if (endpoint) {
@@ -74,14 +84,9 @@ export class DynamoPlayerStore implements PlayerStore {
           ReturnValues: "ALL_NEW",
         }),
       );
-      if (!result.Attributes)
-        throw new Error("DynamoDB update returned no player");
-      return result.Attributes as PlayerRecord;
+      return updatedPlayer(result);
     } catch (error) {
-      if (
-        error instanceof Error &&
-        error.name === "ConditionalCheckFailedException"
-      ) {
+      if (isAwsError(error, "ConditionalCheckFailedException")) {
         // A deleted player is not an active-guess conflict.
         if (!(await this.get(playerId)))
           throw new Error("Player no longer exists");
@@ -103,7 +108,7 @@ export class DynamoPlayerStore implements PlayerStore {
             "SET latestGuess = :guess REMOVE activeGuess ADD score :delta",
           ConditionExpression:
             "attribute_exists(playerId) AND #active.#id = :guessId",
-          ExpressionAttributeNames: { "#active": "activeGuess", "#id": "id" },
+          ExpressionAttributeNames: { ...ACTIVE_GUESS_NAMES, "#id": "id" },
           ExpressionAttributeValues: {
             ":guess": guess,
             ":delta": guess.scoreDelta,
@@ -112,14 +117,9 @@ export class DynamoPlayerStore implements PlayerStore {
           ReturnValues: "ALL_NEW",
         }),
       );
-      if (!result.Attributes)
-        throw new Error("DynamoDB update returned no player");
-      return result.Attributes as PlayerRecord;
+      return updatedPlayer(result);
     } catch (error) {
-      if (
-        error instanceof Error &&
-        error.name === "ConditionalCheckFailedException"
-      ) {
+      if (isAwsError(error, "ConditionalCheckFailedException")) {
         // Already resolved, replaced, or a missing player is expected, not an outage.
         throw new ObsoleteGuessConflict();
       }
@@ -133,7 +133,7 @@ export class DynamoPlayerStore implements PlayerStore {
         FilterExpression:
           "attribute_exists(activeGuess) AND #active.#eligible <= :now",
         ExpressionAttributeNames: {
-          "#active": "activeGuess",
+          ...ACTIVE_GUESS_NAMES,
           "#eligible": "eligibleAt",
         },
         ExpressionAttributeValues: { ":now": now },

@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import type { PricingLog } from "./log.js";
+import { createLogThrottle } from "./throttle.js";
 
 export interface PriceObservation {
   price: string;
@@ -75,10 +77,6 @@ class ProviderFailure extends Error {
     super(category);
   }
 }
-interface PricingLog {
-  warn(fields: Record<string, unknown>, message: string): void;
-  info(fields: Record<string, unknown>, message: string): void;
-}
 export interface PricingOptions {
   fetch?: (
     url: string,
@@ -95,14 +93,13 @@ export function createPricingService(options: PricingOptions = {}) {
   let closed = false;
   let started = false;
   let retryAt = 0;
-  let lastWarning = -Infinity;
+  const warningThrottle = createLogThrottle(now);
   let inflight: Promise<PriceObservation | null> | undefined;
   let cancel: (() => void) | undefined;
   let pollTimer: ReturnType<typeof setTimeout> | undefined;
   function degrade(category: Failure, jobId: string, elapsedMs: number) {
     failed = true;
-    if (now() - lastWarning < 60_000) return;
-    lastWarning = now();
+    if (!warningThrottle.allow("degraded")) return;
     options.log?.warn(
       {
         category,
@@ -122,12 +119,10 @@ export function createPricingService(options: PricingOptions = {}) {
       observation: lastKnown && { ...lastKnown },
     };
   }
-  async function request(): Promise<PriceObservation | null> {
-    const began = now();
-    const jobId = randomUUID();
+  function createDeadline(timeoutMs: number) {
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout> | undefined;
-    const deadline = new Promise<never>((_resolve, reject) => {
+    const promise = new Promise<never>((_resolve, reject) => {
       cancel = () => {
         controller.abort();
         reject(new ProviderFailure("transport"));
@@ -135,12 +130,18 @@ export function createPricingService(options: PricingOptions = {}) {
       timer = setTimeout(() => {
         controller.abort();
         reject(new ProviderFailure("timeout"));
-      }, pricingPolicy.timeoutMs);
+      }, timeoutMs);
     });
+    return { controller, promise, clear: () => clearTimeout(timer) };
+  }
+  async function request(): Promise<PriceObservation | null> {
+    const began = now();
+    const jobId = randomUUID();
+    const deadline = createDeadline(pricingPolicy.timeoutMs);
     const operation = async () => {
       const response = await fetchTicker(
         "https://api.exchange.coinbase.com/products/BTC-USD/ticker",
-        { signal: controller.signal },
+        { signal: deadline.controller.signal },
       );
       if (!response.ok) throw new ProviderFailure("http");
       let payload: unknown;
@@ -166,7 +167,7 @@ export function createPricingService(options: PricingOptions = {}) {
       return { price, providerTradeAt: time, receivedAt };
     };
     try {
-      const observation = await Promise.race([operation(), deadline]);
+      const observation = await Promise.race([operation(), deadline.promise]);
       if (closed) return null;
       const recovering = failed;
       lastKnown = observation;
@@ -195,7 +196,7 @@ export function createPricingService(options: PricingOptions = {}) {
       }
       return null;
     } finally {
-      clearTimeout(timer);
+      deadline.clear();
       cancel = undefined;
     }
   }

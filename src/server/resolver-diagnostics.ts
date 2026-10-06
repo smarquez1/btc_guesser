@@ -1,4 +1,5 @@
-import type { ResolverLog } from "./resolver.js";
+import type { ResolverLog } from "./log.js";
+import { createLogThrottle } from "./throttle.js";
 
 export type ResolverOperation = "discovery" | "resolution" | "provider";
 
@@ -23,9 +24,9 @@ export function resolverDiagnostics(
   runId: string,
 ) {
   // One slot per operation: a healthy operation never announces another's recovery.
-  const degradedAt = new Map<ResolverOperation, number>();
+  const throttle = createLogThrottle(now);
   let conflictTotal = 0;
-  let conflictLoggedAt = -Infinity;
+  const conflictThrottle = createLogThrottle(now);
   return {
     started(pollMs: number, batchLimit: number) {
       log?.info(
@@ -61,10 +62,7 @@ export function resolverDiagnostics(
       );
     },
     degraded(operation: ResolverOperation, details: DegradedDetails) {
-      const time = now();
-      const previous = degradedAt.get(operation);
-      if (previous !== undefined && time - previous < 60_000) return;
-      degradedAt.set(operation, time);
+      if (!throttle.allow(operation)) return;
       const fields = {
         event: "resolver_operation_degraded",
         category:
@@ -80,7 +78,7 @@ export function resolverDiagnostics(
       else log?.error(fields, "Resolver persistence degraded");
     },
     recovered(operation: ResolverOperation, jobId: string) {
-      if (!degradedAt.delete(operation)) return;
+      if (!throttle.clear(operation)) return;
       log?.info(
         {
           event: "resolver_operation_recovered",
@@ -94,9 +92,7 @@ export function resolverDiagnostics(
     },
     conflicts(count: number) {
       conflictTotal += count;
-      const time = now();
-      if (time - conflictLoggedAt < 60_000) return;
-      conflictLoggedAt = time;
+      if (!conflictThrottle.allow("conflict")) return;
       const fields = {
         event: "resolver_conflicts",
         category: "expected",
