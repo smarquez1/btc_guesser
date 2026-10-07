@@ -1,6 +1,6 @@
 # BTC guess
 
-The project is in setup. The client currently renders an empty React root; create the pen.dev mockup before implementing screens or game behavior.
+The project is in setup. The client currently renders an empty React root. The approved UI mockup is in [docs/ui.pen](docs/ui.pen); implementation tasks and status are tracked in [docs/tasks/index.md](docs/tasks/index.md).
 
 ## Development tools
 

@@ -1,0 +1,686 @@
+{
+  "version": "2.20",
+  "children": [
+    {
+      "type": "frame",
+      "id": "bi8Au",
+      "x": 0,
+      "y": 0,
+      "name": "BTC guess · Single screen · 16:10",
+      "clip": true,
+      "width": 1440,
+      "height": 900,
+      "fill": "#FFFFFF",
+      "layout": "vertical",
+      "padding": [
+        40,
+        64,
+        36,
+        64
+      ],
+      "children": [
+        {
+          "type": "frame",
+          "id": "QQriM",
+          "name": "Header",
+          "width": "fill_container",
+          "justifyContent": "space_between",
+          "alignItems": "center",
+          "children": [
+            {
+              "type": "text",
+              "id": "UdJhZ",
+              "name": "Wordmark",
+              "fill": "#171717",
+              "content": "btc guess",
+              "fontFamily": "Inter",
+              "fontSize": 21,
+              "fontWeight": "600",
+              "letterSpacing": -0.7
+            },
+            {
+              "type": "frame",
+              "id": "BPy4y",
+              "name": "Score",
+              "gap": 12,
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "text",
+                  "id": "nqB00",
+                  "name": "Player name",
+                  "fill": "#171717",
+                  "content": "Steve",
+                  "fontFamily": "Inter",
+                  "fontSize": 14,
+                  "fontWeight": "500"
+                },
+                {
+                  "type": "text",
+                  "id": "M7bidi",
+                  "name": "Score label",
+                  "fill": "#666666",
+                  "content": "Your score",
+                  "fontFamily": "Inter",
+                  "fontSize": 14,
+                  "fontWeight": "normal"
+                },
+                {
+                  "type": "text",
+                  "id": "XoUUv",
+                  "name": "Score value",
+                  "fill": "#171717",
+                  "content": "0",
+                  "fontFamily": "Inter",
+                  "fontSize": 23,
+                  "fontWeight": "600"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "fJYKz",
+          "name": "Game area",
+          "width": "fill_container",
+          "height": "fill_container",
+          "layout": "vertical",
+          "justifyContent": "center",
+          "alignItems": "center",
+          "children": [
+            {
+              "type": "frame",
+              "id": "srgsA",
+              "name": "Game content",
+              "width": 560,
+              "layout": "vertical",
+              "gap": 24,
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "skRP7",
+                  "name": "Latest price",
+                  "width": "fill_container",
+                  "layout": "vertical",
+                  "gap": 10,
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "PNkAk",
+                      "name": "Market label",
+                      "fill": "#666666",
+                      "content": "BITCOIN / USD",
+                      "fontFamily": "Inter",
+                      "fontSize": 12,
+                      "fontWeight": "600",
+                      "letterSpacing": 1.8
+                    },
+                    {
+                      "type": "text",
+                      "id": "ntSTX",
+                      "name": "Price value",
+                      "fill": "#171717",
+                      "content": "$97,842.36",
+                      "fontFamily": "Inter",
+                      "fontSize": 72,
+                      "fontWeight": "500",
+                      "letterSpacing": -3
+                    },
+                    {
+                      "type": "text",
+                      "id": "GqQnu",
+                      "name": "Price timestamp",
+                      "fill": "#666666",
+                      "content": "Latest price · Updated 3 seconds ago",
+                      "fontFamily": "Inter",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "aTDeG",
+                  "name": "Question",
+                  "width": "fill_container",
+                  "layout": "vertical",
+                  "gap": 10,
+                  "padding": [
+                    16,
+                    0,
+                    0,
+                    0
+                  ],
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "Rb5tQ",
+                      "name": "Question title",
+                      "fill": "#171717",
+                      "content": "Where will Bitcoin go next?",
+                      "fontFamily": "Inter",
+                      "fontSize": 26,
+                      "fontWeight": "500",
+                      "letterSpacing": -0.6
+                    },
+                    {
+                      "type": "text",
+                      "id": "Dd6c8",
+                      "name": "Question detail",
+                      "fill": "#666666",
+                      "content": "Guess higher or lower. We’ll check after 60 seconds.",
+                      "fontFamily": "Inter",
+                      "fontSize": 15,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "X17eK",
+                  "name": "Guess controls",
+                  "width": "fill_container",
+                  "gap": 12,
+                  "padding": [
+                    8,
+                    0,
+                    0,
+                    0
+                  ],
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "NTlvO",
+                      "name": "Guess higher",
+                      "width": "fill_container",
+                      "height": 60,
+                      "fill": "#FFFFFF",
+                      "stroke": "#D4D4D4",
+                      "strokeWidth": 1,
+                      "gap": 10,
+                      "justifyContent": "center",
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "icon",
+                          "id": "m2HM8A",
+                          "name": "Guess higher icon",
+                          "width": 19,
+                          "height": 19,
+                          "icon": "arrow-up",
+                          "library": "lucide",
+                          "fill": "#171717"
+                        },
+                        {
+                          "type": "text",
+                          "id": "Ddkuo",
+                          "name": "Guess higher label",
+                          "fill": "#171717",
+                          "content": "Guess higher",
+                          "fontFamily": "Inter",
+                          "fontSize": 16,
+                          "fontWeight": "500"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "jsJvb",
+                      "name": "Guess lower",
+                      "width": "fill_container",
+                      "height": 60,
+                      "fill": "#FFFFFF",
+                      "stroke": "#D4D4D4",
+                      "strokeWidth": 1,
+                      "gap": 10,
+                      "justifyContent": "center",
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "icon",
+                          "id": "eW9iq",
+                          "name": "Guess lower icon",
+                          "width": 19,
+                          "height": 19,
+                          "icon": "arrow-down",
+                          "library": "lucide",
+                          "fill": "#171717"
+                        },
+                        {
+                          "type": "text",
+                          "id": "iMlxs",
+                          "name": "Guess lower label",
+                          "fill": "#171717",
+                          "content": "Guess lower",
+                          "fontFamily": "Inter",
+                          "fontSize": 16,
+                          "fontWeight": "500"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "text",
+                  "id": "gJsU5",
+                  "name": "Submission note",
+                  "fill": "#666666",
+                  "content": "Your guess starts when you choose a direction.",
+                  "fontFamily": "Inter",
+                  "fontSize": 13,
+                  "fontWeight": "normal"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "d6f9Og",
+          "name": "Help footer",
+          "width": "fill_container",
+          "stroke": "#E5E5E5",
+          "strokeWidth": {
+            "top": 1
+          },
+          "layout": "vertical",
+          "gap": 12,
+          "padding": [
+            24,
+            0,
+            0,
+            0
+          ],
+          "alignItems": "center",
+          "children": [
+            {
+              "type": "text",
+              "id": "HFU4p",
+              "name": "Help heading",
+              "fill": "#171717",
+              "content": "A little intuition. One minute.",
+              "fontFamily": "Inter",
+              "fontSize": 14,
+              "fontWeight": "500"
+            },
+            {
+              "type": "text",
+              "id": "hBM7w",
+              "name": "Scoring help",
+              "fill": "#666666",
+              "content": "Correct guess +1 point. Incorrect guess −1 point. One active guess at a time.",
+              "fontFamily": "Inter",
+              "fontSize": 13,
+              "fontWeight": "normal"
+            },
+            {
+              "type": "text",
+              "id": "CEA4M",
+              "name": "Equal price help",
+              "fill": "#666666",
+              "content": "If the price is unchanged after 60 seconds, we’ll wait until it moves.",
+              "fontFamily": "Inter",
+              "fontSize": 13,
+              "fontWeight": "normal"
+            },
+            {
+              "type": "text",
+              "id": "glkDK",
+              "name": "Source note",
+              "fill": "#666666",
+              "content": "Prices from Coinbase · Just for fun, no real money",
+              "fontFamily": "Inter",
+              "fontSize": 12,
+              "fontWeight": "normal"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "frame",
+      "id": "yerQW",
+      "x": 1540,
+      "y": 0,
+      "name": "BTC guess · Success state · 16:10",
+      "clip": true,
+      "width": 1440,
+      "height": 900,
+      "fill": "#FFFFFF",
+      "layout": "vertical",
+      "padding": [
+        40,
+        64,
+        36,
+        64
+      ],
+      "children": [
+        {
+          "type": "frame",
+          "id": "t2aRI",
+          "name": "Header",
+          "width": "fill_container",
+          "justifyContent": "space_between",
+          "alignItems": "center",
+          "children": [
+            {
+              "type": "text",
+              "id": "SrucO",
+              "name": "Wordmark",
+              "fill": "#171717",
+              "content": "btc guess",
+              "fontFamily": "Inter",
+              "fontSize": 21,
+              "fontWeight": "600",
+              "letterSpacing": -0.7
+            },
+            {
+              "type": "frame",
+              "id": "S8PR8",
+              "name": "Score",
+              "gap": 12,
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "text",
+                  "id": "PtrVm",
+                  "name": "Player name",
+                  "fill": "#171717",
+                  "content": "Steve",
+                  "fontFamily": "Inter",
+                  "fontSize": 14,
+                  "fontWeight": "500"
+                },
+                {
+                  "type": "text",
+                  "id": "Y1r27",
+                  "name": "Score label",
+                  "fill": "#666666",
+                  "content": "Your score",
+                  "fontFamily": "Inter",
+                  "fontSize": 14,
+                  "fontWeight": "normal"
+                },
+                {
+                  "type": "text",
+                  "id": "tvKsg",
+                  "name": "Score value",
+                  "fill": "#171717",
+                  "content": "1",
+                  "fontFamily": "Inter",
+                  "fontSize": 23,
+                  "fontWeight": "600"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "ghzXF",
+          "name": "Game area",
+          "width": "fill_container",
+          "height": "fill_container",
+          "layout": "vertical",
+          "justifyContent": "center",
+          "alignItems": "center",
+          "children": [
+            {
+              "type": "frame",
+              "id": "gWrSU",
+              "name": "Game content",
+              "width": 560,
+              "layout": "vertical",
+              "gap": 24,
+              "alignItems": "center",
+              "children": [
+                {
+                  "type": "frame",
+                  "id": "lwgpD",
+                  "name": "Latest price",
+                  "width": "fill_container",
+                  "layout": "vertical",
+                  "gap": 10,
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "bkcrH",
+                      "name": "Market label",
+                      "fill": "#666666",
+                      "content": "BITCOIN / USD",
+                      "fontFamily": "Inter",
+                      "fontSize": 12,
+                      "fontWeight": "600",
+                      "letterSpacing": 1.8
+                    },
+                    {
+                      "type": "text",
+                      "id": "b2vGI",
+                      "name": "Price value",
+                      "fill": "#237245",
+                      "content": "$97,858.12",
+                      "fontFamily": "Inter",
+                      "fontSize": 72,
+                      "fontWeight": "500",
+                      "letterSpacing": -3
+                    },
+                    {
+                      "type": "text",
+                      "id": "XHiDr",
+                      "name": "Price timestamp",
+                      "fill": "#666666",
+                      "content": "Latest price · Updated just now",
+                      "fontFamily": "Inter",
+                      "fontSize": 13,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "wmSda",
+                  "name": "Question",
+                  "width": "fill_container",
+                  "layout": "vertical",
+                  "gap": 10,
+                  "padding": [
+                    16,
+                    0,
+                    0,
+                    0
+                  ],
+                  "alignItems": "center",
+                  "children": [
+                    {
+                      "type": "text",
+                      "id": "k1ATI",
+                      "name": "Question title",
+                      "fill": "#171717",
+                      "content": "Correct! +1 point",
+                      "fontFamily": "Inter",
+                      "fontSize": 26,
+                      "fontWeight": "500",
+                      "letterSpacing": -0.6
+                    },
+                    {
+                      "type": "text",
+                      "id": "EVwhj",
+                      "name": "Question detail",
+                      "fill": "#666666",
+                      "content": "You guessed higher. Bitcoin rose from $97,842.36.",
+                      "fontFamily": "Inter",
+                      "fontSize": 15,
+                      "fontWeight": "normal"
+                    }
+                  ]
+                },
+                {
+                  "type": "frame",
+                  "id": "xTp8i",
+                  "name": "Guess controls",
+                  "width": "fill_container",
+                  "gap": 12,
+                  "padding": [
+                    8,
+                    0,
+                    0,
+                    0
+                  ],
+                  "children": [
+                    {
+                      "type": "frame",
+                      "id": "FN3Vk",
+                      "name": "Guess higher",
+                      "width": "fill_container",
+                      "height": 60,
+                      "fill": "#FFFFFF",
+                      "stroke": "#D4D4D4",
+                      "strokeWidth": 1,
+                      "gap": 10,
+                      "justifyContent": "center",
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "icon",
+                          "id": "vOr2h",
+                          "name": "Guess higher icon",
+                          "width": 19,
+                          "height": 19,
+                          "icon": "arrow-up",
+                          "library": "lucide",
+                          "fill": "#171717"
+                        },
+                        {
+                          "type": "text",
+                          "id": "E37taN",
+                          "name": "Guess higher label",
+                          "fill": "#171717",
+                          "content": "Guess higher",
+                          "fontFamily": "Inter",
+                          "fontSize": 16,
+                          "fontWeight": "500"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "frame",
+                      "id": "wgEpD",
+                      "name": "Guess lower",
+                      "width": "fill_container",
+                      "height": 60,
+                      "fill": "#FFFFFF",
+                      "stroke": "#D4D4D4",
+                      "strokeWidth": 1,
+                      "gap": 10,
+                      "justifyContent": "center",
+                      "alignItems": "center",
+                      "children": [
+                        {
+                          "type": "icon",
+                          "id": "f45GkY",
+                          "name": "Guess lower icon",
+                          "width": 19,
+                          "height": 19,
+                          "icon": "arrow-down",
+                          "library": "lucide",
+                          "fill": "#171717"
+                        },
+                        {
+                          "type": "text",
+                          "id": "L8XIlR",
+                          "name": "Guess lower label",
+                          "fill": "#171717",
+                          "content": "Guess lower",
+                          "fontFamily": "Inter",
+                          "fontSize": 16,
+                          "fontWeight": "500"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "text",
+                  "id": "c5EK59",
+                  "name": "Submission note",
+                  "fill": "#666666",
+                  "content": "Choose a direction to make your next guess.",
+                  "fontFamily": "Inter",
+                  "fontSize": 13,
+                  "fontWeight": "normal"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "frame",
+          "id": "qxuX5",
+          "name": "Help footer",
+          "width": "fill_container",
+          "stroke": "#E5E5E5",
+          "strokeWidth": {
+            "top": 1
+          },
+          "layout": "vertical",
+          "gap": 12,
+          "padding": [
+            24,
+            0,
+            0,
+            0
+          ],
+          "alignItems": "center",
+          "children": [
+            {
+              "type": "text",
+              "id": "sqXD2",
+              "name": "Help heading",
+              "fill": "#171717",
+              "content": "A little intuition. One minute.",
+              "fontFamily": "Inter",
+              "fontSize": 14,
+              "fontWeight": "500"
+            },
+            {
+              "type": "text",
+              "id": "L2N91",
+              "name": "Scoring help",
+              "fill": "#666666",
+              "content": "Correct guess +1 point. Incorrect guess −1 point. One active guess at a time.",
+              "fontFamily": "Inter",
+              "fontSize": 13,
+              "fontWeight": "normal"
+            },
+            {
+              "type": "text",
+              "id": "N0zQN5",
+              "name": "Equal price help",
+              "fill": "#666666",
+              "content": "If the price is unchanged after 60 seconds, we’ll wait until it moves.",
+              "fontFamily": "Inter",
+              "fontSize": 13,
+              "fontWeight": "normal"
+            },
+            {
+              "type": "text",
+              "id": "Q6WByr",
+              "name": "Source note",
+              "fill": "#666666",
+              "content": "Prices from Coinbase · Just for fun, no real money",
+              "fontFamily": "Inter",
+              "fontSize": 12,
+              "fontWeight": "normal"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "fileToken": "78533780-3b5c-4430-8c69-3675cd78112b"
+}

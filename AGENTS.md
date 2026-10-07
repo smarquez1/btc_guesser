@@ -2,6 +2,8 @@
 
 This is a small interview assignment. Prioritize working end-to-end flow, correctness, readable structure, deployment, then UI polish. Skip optional work that does not improve the critical path.
 
+This challenge targets desktop only. Use the 16:10 mockup as the reference; mobile/tablet layouts and verification are out of scope.
+
 ## Stack and layout
 
 - Frontend: React, TypeScript, Vite, Tailwind, and shadcn/ui. Code in `src/`, static assets in `public/`.
@@ -32,9 +34,20 @@ Use anonymous identity with backend validation, cheap player-creation rate limit
 
 Avoid Redux, Zustand, queues, microservices, DI frameworks, generic repositories, custom design systems, and full authentication unless explicitly required. Prefer existing shadcn/ui primitives.
 
-Use Lefthook before commits to run Biome on staged files and `pnpm typecheck` (`tsc --noEmit`) on the whole project. Run lint and type checks only before committing or when the user explicitly asks. Do not run formatters unless explicitly asked. Automated tests, test infrastructure, and CI remain deferred; do not add or run them until explicitly requested. Verify the working flow directly; use Playwright for meaningful UI changes without creating a test suite.
+Use Lefthook before commits to run Biome on staged files and `pnpm typecheck` (`tsc --noEmit`) on the whole project. Run lint and type checks only before committing or when the user explicitly asks. Do not run formatters unless explicitly asked. Add and run automated tests when undertaking the unit-test task. Most automated coverage should be fast, deterministic unit tests; keep end-to-end verification focused on the critical flow. Until that task, verify the working flow directly and use Playwright for meaningful UI changes without creating a test suite. CI remains deferred unless explicitly requested.
+
+## Task tracking
+
+- Keep tasks as numbered Markdown files under `docs/tasks/`.
+- Use [docs/tasks/index.md](docs/tasks/index.md) as the status index, with links to each task and statuses `todo`, `in-progress`, `blocked`, or `done`.
+- Before starting work, read the relevant task and its dependencies, then mark it `in-progress` in the index.
+- Maintain each task's scope, acceptance criteria, validation results, and limitations. Record the reason for any blocked task.
+- Mark a task `done` only when its acceptance criteria are met and validation is recorded; keep the index current as work progresses.
+- Follow the planned sequence: UI mockup, backend foundation, anonymous players, BTC pricing, guess lifecycle, game UI, unit tests, focused end-to-end verification, then deployment. Complete unit tests before the end-to-end verification task.
 
 ## Task-specific guidance
+
+The approved UI reference is [docs/ui.pen](docs/ui.pen), containing 16:10 ready and success mockups of one game screen. Inspect it with pen.dev before UI implementation. Keep the UI minimal: black, white, neutral grays, square buttons, and bottom help text. Reserve green/red for the price after a correct/incorrect guess. Show the player name beside the score (Steve is the mockup example). Keep both direction buttons visible, disable them while pending with the selected direction highlighted, and re-enable them after resolution. Show countdowns, results, loading, and errors inline; do not add separate game-state screens or a Try again action.
 
 Read the relevant document before making changes:
 

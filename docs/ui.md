@@ -2,7 +2,7 @@
 
 ## Implementation
 
-Keep the UI minimal, polished, and responsive.
+Keep the UI minimal and polished for desktop only. Use the approved 16:10 mockup as the reference. Mobile/tablet layouts and verification are out of scope for this challenge.
 
 Use:
 
@@ -41,6 +41,6 @@ After implementation, verify the rendered UI with Playwright. For meaningful gam
 - Pending/countdown state
 - Resolved result and score
 - An obvious error state
-- Responsive layout
+- Desktop layout, using the 16:10 mockup as the reference
 
 Use browser automation for verification without adding test infrastructure. Avoid repeating the full flow for trivial changes.
