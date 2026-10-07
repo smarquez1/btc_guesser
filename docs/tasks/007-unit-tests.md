@@ -30,3 +30,8 @@ and two real DynamoDB tests for persistence and concurrent creation limits.
 All 33 unit/route tests and five local DynamoDB tests passed on 2026-10-07.
 The anonymous-player coverage is recorded in task 003; game and UI review remains
 pending, so this task stays todo.
+
+Task 004 adds 18 deterministic Coinbase/pricing/route tests and two DynamoDB
+integration tests for trade ordering, freshness updates, and explicit expiry.
+All 51 unit/route tests and seven local DynamoDB tests pass on 2026-10-07.
+Game and UI coverage review remains pending; this task stays todo.

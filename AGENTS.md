@@ -50,6 +50,9 @@ Avoid Redux, Zustand, queues, microservices, DI frameworks, generic repositories
 
 ## Commits and checks
 
+- Follow the workflow: implementation -> user approval -> requested tests -> commit.
+  Add tests only when the user asks, after reviewing the implementation.
+
 - Use Lefthook before commits to run Biome on staged files and `pnpm typecheck` (`tsc --noEmit`) on the whole project.
 - Run lint and type checks only before committing or when the user explicitly asks. Do not run formatters unless explicitly asked.
 - Add and run unit tests when the developer asks, before committing the related work. Keep most coverage fast and deterministic; add focused integration tests where real component interactions matter.

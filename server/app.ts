@@ -1,6 +1,10 @@
 import Fastify, { type FastifyError } from 'fastify';
 import cookie from '@fastify/cookie';
 import type { Config } from './config.ts';
+import { fetchCoinbasePrice } from './lib/coinbase.ts';
+import { priceRepository } from './repositories/prices.ts';
+import { priceRoutes } from './routes/prices.ts';
+import { priceService } from './services/prices.ts';
 import { createDynamoDB } from './lib/dynamodb.ts';
 import { playerRepository } from './repositories/players.ts';
 import { playerRoutes } from './routes/players.ts';
@@ -38,6 +42,12 @@ export function buildApp(config?: Config) {
     app.addHook('onClose', async () => client.destroy());
     app.register(cookie);
     app.register(playerRoutes, { config, players });
+
+    const prices = priceService(
+      priceRepository(documentClient, config.tableName),
+      fetchCoinbasePrice,
+    );
+    app.register(priceRoutes, { prices });
   }
 
   return app;

@@ -131,3 +131,34 @@ profiles have no TTL. A failed profile write can consume a limit attempt.
 Forwarded headers are not trusted; proxy configuration belongs to deployment.
 Cookie loss has no identity recovery. Clearing cookies can create additional
 players within the creation limit, an accepted limitation of anonymous play.
+
+## Implemented pricing API
+
+`GET /api/price` exposes `{ symbol, price, observedAt, stale }` without requiring
+an identity. Coinbase's public Exchange BTC-USD ticker provides the last-trade
+price and source timestamp. The client validates a finite positive decimal price
+and a valid nonfuture timestamp, converts it to epoch seconds, and uses a
+five-second HTTP timeout. No secrets or additional configuration are required.
+
+The price service checks `freshUntil` and `expiresAt` explicitly. Freshness lasts
+five seconds from a successful fetch; retention lasts one hour from the source
+observation. Fetching an unchanged ticker refreshes freshness without changing
+`observedAt` or extending retention.
+Fresh observations bypass Coinbase; stale/missing entries refresh on demand.
+A failed fetch falls back to a consistent cache reread, allowing another process's
+refresh to be used. Expired records are unavailable even before TTL deletion.
+Old observations never receive new timestamps or extended retention on reads.
+A conditional write orders observations by validated Coinbase `trade_id`, stored
+as internal `tradeId`. Newer trades can replace older ones within the same epoch
+second. Equal trades can advance `freshUntil`; older trades and earlier freshness
+values cannot replace newer ones. Existing records without a trade ID can upgrade
+only if the candidate observation timestamp is at least as recent. Trade IDs are
+not returned by the API.
+
+Available stale data returns 200 with `stale: true`; no available data returns
+503 with a retry hint. Database errors propagate to the safe 500 handler. The API
+sets `Cache-Control: no-store`. Task 005 must evaluate deadline eligibility from
+`observedAt`, independently of `stale`; cached data from before a deadline cannot
+resolve a guess simply because it was read afterward. No background jobs or
+cross-process refresh locks are introduced; simultaneous cache misses may issue
+multiple Coinbase requests, while conditional persistence preserves ordering.

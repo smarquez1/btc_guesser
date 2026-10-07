@@ -2,7 +2,7 @@
 
 The project folder is `btc_guesser`; the package name is `btc-guesser`.
 
-The backend provides a health endpoint, anonymous player identities, and local DynamoDB setup. The client currently renders an empty React root. The approved UI mockup is in [docs/ui.pen](docs/ui.pen); implementation tasks and status are tracked in [docs/tasks/index.md](docs/tasks/index.md).
+The backend provides a health endpoint, anonymous player identities, Coinbase BTC/USD pricing, and local DynamoDB setup. The client currently renders an empty React root. The approved UI mockup is in [docs/ui.pen](docs/ui.pen); implementation tasks and status are tracked in [docs/tasks/index.md](docs/tasks/index.md).
 
 ## Development tools
 
@@ -81,6 +81,34 @@ The Vite proxy can therefore share one limit among local browsers. Deployment
 must configure a trusted proxy deliberately if individual client limits are
 needed behind a load balancer. Never blindly trust client-supplied forwarded IPs.
 
+## BTC/USD pricing
+
+`GET /api/price` needs no player identity and returns:
+
+```json
+{ "symbol": "BTC-USD", "price": 83441.34, "observedAt": 1791393486, "stale": false }
+```
+
+The backend calls the public [Coinbase Exchange ticker](https://docs.cdp.coinbase.com/api-reference/exchange-api/rest-api/products/get-product-ticker)
+with a five-second timeout and validates the response. `observedAt` is the last
+trade's timestamp in integer epoch seconds, preserved across all cache reads.
+No Coinbase API key is required.
+
+DynamoDB stores the shared latest observation, with a five-second freshness
+window measured from the successful fetch and one-hour retention from `observedAt`. Fresh reads avoid
+Coinbase. Missing or stale cache entries trigger a refresh. Conditional writes
+order observations by Coinbase trade ID, including trades within the same second.
+Fetching the same trade again can extend freshness without changing `observedAt`;
+cache reads alone never extend freshness. Trade IDs stay internal to the cache. HTTP responses use `Cache-Control: no-store`.
+
+If Coinbase fails or returns an observation older than retention, the API returns
+an available cached observation with its original timestamp and freshness flag.
+A stale fallback has `stale: true`; it expires after one hour even if DynamoDB
+has not deleted its TTL record. Without an available observation the response is
+503 with `{ "error": "BTC price unavailable" }` and `Retry-After: 5`. DynamoDB
+failures return safe 500 responses. Cache freshness does not establish whether
+an observation is eligible to resolve a guess; task 005 checks its timestamp.
+
 ## Project MCP servers
 
 The configuration is supplied in `codex-mcp.toml`. This environment prevents creating `.codex/config.toml`, so enable it locally with:
@@ -122,7 +150,8 @@ pnpm lint
 pnpm typecheck
 ```
 
-Formatting is not part of the commit hook. Add and run unit tests when the
+The workflow is implementation, user approval, requested tests, then commit.
+Do not add tests before the user requests them. Formatting is not part of the commit hook. Add and run unit tests when the
 developer asks, before committing related work. The hook does not run tests.
 
 ## Tests
@@ -131,9 +160,10 @@ developer asks, before committing related work. The hook does not run tests.
 mise exec -- pnpm test
 ```
 
-This runs deterministic configuration and player-service unit tests plus Fastify
-route integration tests using injection, without a listening server or external
-services. Player coverage includes identity validation, initial scores, cookie
+This runs deterministic configuration, player, Coinbase-client, and pricing unit
+tests plus Fastify route integration tests using injection, without a listening
+server or external services. Pricing tests cover source validation, fetch-based
+freshness, unchanged tickers, expiry, stale fallback, and safe error responses. Player coverage includes identity validation, initial scores, cookie
 security, input/origin rejection, throttling, and safe database error responses.
 
 For real DynamoDB integration tests, start the local container and explicitly
@@ -147,5 +177,7 @@ Use port 8001 if configured above. These tests create uniquely named temporary
 tables and delete them afterward; they do not use the application table or AWS
 credentials. They verify table setup, reruns, incompatible keys/TTL, document reads/writes,
 player persistence across app instances, conditional profile creation, concurrent
-creation limits, and hourly rollover while old TTL records still exist.
+creation limits, hourly rollover while old TTL records still exist, concurrent
+price writes ordered by trade ID, unchanged-trade freshness updates, and explicit
+price expiry before TTL cleanup.
 End-to-end tests remain deferred to task 008.

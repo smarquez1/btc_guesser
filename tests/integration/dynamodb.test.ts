@@ -12,6 +12,10 @@ import {
   ResourceNotFoundException,
 } from '@aws-sdk/client-dynamodb';
 import { GetCommand, PutCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
+import { priceRepository } from '../../server/repositories/prices.ts';
+import { priceService } from '../../server/services/prices.ts';
+import { priceRoutes } from '../../server/routes/prices.ts';
+import type { CachedPrice } from '../../server/types/price.ts';
 import { buildApp } from '../../server/app.ts';
 import { playerRepository } from '../../server/repositories/players.ts';
 import { loadConfig } from '../../server/config.ts';
@@ -304,4 +308,95 @@ test('creation limit is atomic across app instances and ignores old counters bef
   assert.equal(oldCounter.Item?.attempts, 10);
   assert.equal(oldCounter.Item?.expiresAt, windowStart + 7200);
   assert.ok(Number.isInteger(oldCounter.Item?.expiresAt));
+});
+
+
+test('price cache writes never replace newer observations, including concurrent requests', async (t) => {
+  const tableName = `btc-guess-test-${randomUUID()}`;
+  const { client, documentClient } = createDynamoDB(
+    loadConfig({ ...environment, DYNAMODB_TABLE: tableName }),
+  );
+  t.after(async () => {
+    try {
+      await client.send(new DeleteTableCommand({ TableName: tableName }));
+    } finally {
+      client.destroy();
+    }
+  });
+  await setupTable(tableName);
+  const repository = priceRepository(documentClient, tableName);
+  const base: CachedPrice = {
+    symbol: 'BTC-USD', tradeId: 20, price: 65000, observedAt: 1800000000,
+    freshUntil: 1800000005, expiresAt: 1800003600,
+  };
+
+  assert.equal(await repository.get(), undefined);
+  await Promise.all(Array.from({ length: 12 }, (_, index) => repository.save({
+    ...base, tradeId: base.tradeId + index, price: base.price + index,
+  })));
+  const latest = { ...base, tradeId: 31, price: 65011 };
+
+  assert.deepEqual(await repository.get(), latest);
+  assert.deepEqual(await repository.save(base), latest);
+  // An older trade with a later fetch time must still lose.
+  assert.deepEqual(await repository.save({ ...base, freshUntil: base.freshUntil + 50 }), latest);
+  const refreshed = { ...latest, freshUntil: latest.freshUntil + 5 };
+
+  assert.deepEqual(await repository.save(refreshed), refreshed);
+  assert.deepEqual(await repository.save(latest), refreshed);
+  assert.deepEqual(await repository.get(), refreshed);
+
+  // Upgrade existing cache records without allowing source time to regress.
+  const { tradeId: _tradeId, ...legacy } = base;
+  await documentClient.send(new PutCommand({
+    TableName: tableName, Item: { pk: 'PRICE#BTC-USD', sk: 'LATEST', ...legacy },
+  }));
+  await repository.save({ ...base, observedAt: base.observedAt - 1 });
+  assert.equal((await repository.get())?.tradeId, undefined);
+  assert.equal((await repository.get())?.observedAt, base.observedAt);
+  await repository.save(base);
+  assert.deepEqual(await repository.get(), base);
+});
+
+test('price service shares persisted cache and rejects expiry before DynamoDB TTL cleanup', async (t) => {
+  const tableName = `btc-guess-test-${randomUUID()}`;
+  const { client, documentClient } = createDynamoDB(
+    loadConfig({ ...environment, DYNAMODB_TABLE: tableName }),
+  );
+  const app = buildApp();
+  t.after(async () => {
+    await app.close();
+
+    try {
+      await client.send(new DeleteTableCommand({ TableName: tableName }));
+    } finally {
+      client.destroy();
+    }
+  });
+  await setupTable(tableName);
+  let now = 1800000000;
+  t.mock.method(Date, 'now', () => now * 1000);
+  const repository = priceRepository(documentClient, tableName);
+  const first = priceService(repository, async () => ({ tradeId: 20, price: 65000, observedAt: now }));
+  const second = priceService(priceRepository(documentClient, tableName), async () => {
+    throw new Error('Coinbase unavailable');
+  });
+  const initial = await first.get();
+
+  assert.deepEqual(await second.get(), initial);
+  now += 5;
+  app.register(priceRoutes, { prices: second });
+  const stale = await app.inject('/api/price');
+
+  assert.equal(stale.statusCode, 200);
+  assert.equal(stale.json().stale, true);
+  assert.equal(stale.json().observedAt, 1800000000);
+  now = 1800003600;
+  const expired = await app.inject('/api/price');
+
+  assert.equal(expired.statusCode, 503);
+  assert.deepEqual(await repository.get(), {
+    symbol: 'BTC-USD', tradeId: 20, price: 65000, observedAt: 1800000000,
+    freshUntil: 1800000005, expiresAt: 1800003600,
+  });
 });
