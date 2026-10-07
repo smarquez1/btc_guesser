@@ -1,6 +1,6 @@
 # BTC Guesser
 
-A small web app for guessing whether BTC/USD will be higher or lower after at least one minute. This README is the project overview during planning; before submission, expand it with the finished app’s setup, test, deployment instructions, and live URL.
+A small web app for guessing whether BTC/USD will be higher or lower after at least one minute. Public repository: [github.com/smarquez1/btc_guesser](https://github.com/smarquez1/btc_guesser). Live demo: [btc-guesser.onrender.com](https://btc-guesser.onrender.com). This README covers the app’s local setup, tests, API contracts, and deployment steps. See [Deployment status and open items](#deployment-status-and-open-items) for what remains.
 
 ## Local setup
 
@@ -56,8 +56,10 @@ fallback exists. Do not add real AWS keys for local development; non-loopback
 `DYNAMODB_ENDPOINT` values are rejected. The table has a string partition key
 `playerId` and no sort key.
 For AWS, provision the table separately and grant the app only `dynamodb:GetItem`,
-`dynamodb:PutItem`, and `dynamodb:UpdateItem` on that table. Local setup additionally
+`dynamodb:PutItem`, `dynamodb:UpdateItem`, and `dynamodb:Scan` on that table
+(`Scan` is the resolver's due-guess discovery). Local setup additionally
 uses DescribeTable/CreateTable; the isolated integration command uses DeleteTable.
+The full runtime policy and deployment steps are in [Deployment](#deployment) below.
 
 ### Player API contract
 
@@ -286,6 +288,154 @@ This is a local run, not a public deployment.
 | `src/server/app.test.ts` | Health, static assets, SPA, and API404 tests |
 | `vite.config.ts` / `tsconfig*.json` | Frontend proxy, `@` client alias, and TypeScript build boundaries |
 | `docs/` | Product/architecture decisions and task tracking |
+
+## Deployment
+
+The demo runs as one [Render](https://render.com) free web service. The same
+Fastify process serves the built React assets, the API, and the background
+resolver; DynamoDB is provisioned separately in AWS. No disk, queue, or Lambda
+is used.
+
+### Render service
+
+`render.yaml` is a minimal Render Blueprint for the service. Create a **Web
+Service** from the repo (or **New → Blueprint** and point Render at the repo) with:
+
+| Setting | Value |
+|---|---|
+| Runtime | Node.js `24` (`NODE_VERSION=24`); `package.json` pins `pnpm@12.9.1` |
+| Build command | `pnpm install --frozen-lockfile && pnpm build` (Render's Node runtime already provides pnpm; do **not** run `corepack enable`, which fails on the read-only build image) |
+| Start command | `pnpm start` |
+| Health check path | `/api/health` (works without database config) |
+| Plan | Free |
+
+`pnpm build` runs `pnpm typecheck`, builds `dist/client` with Vite, then compiles
+the server to `dist/server`. `pnpm start` runs `dist/server/index.js`. Render sets
+`PORT` for the process; the built server binds `0.0.0.0` when `NODE_ENV=production`,
+so no extra host configuration is needed.
+
+### Required environment variables
+
+Set these on the Render service (Render dashboard → the service → **Environment**).
+Secrets use `sync: false` in `render.yaml` and are entered in the dashboard, never
+committed.
+
+| Variable | Required | Notes |
+|---|---|---|
+| `NODE_ENV` | Yes | `production` |
+| `PORT` | Platform-set | Render injects it; do not override |
+| `AWS_REGION` | Yes | Region of the DynamoDB table, e.g. `us-east-1` |
+| `DYNAMODB_TABLE` | Yes | Real AWS table name |
+| `DYNAMODB_ENDPOINT` | **Omit** | Must be unset for AWS; loopback-only values are rejected |
+| `AWS_ACCESS_KEY_ID` | Yes (secret) | Runtime IAM credentials, or omit for an attached role |
+| `AWS_SECRET_ACCESS_KEY` | Yes (secret) | Paired with the key above |
+| `AWS_SESSION_TOKEN` | Only for temporary creds | Needed only for assumed-role/session credentials |
+
+The app uses the AWS SDK's standard credential/region chain, so an attached IAM
+role works without static keys where the platform supports one. Do not set
+`DYNAMODB_ENDPOINT` in AWS; it is accepted only for a loopback DynamoDB Local URL.
+
+### Provisioning DynamoDB
+
+Create the table on AWS separately (out of band; the app does not create it in
+production):
+
+- Table name: matches `DYNAMODB_TABLE`.
+- Partition key: `playerId`, type String. No sort key. `PAY_PER_REQUEST`
+  (on-demand) is sufficient at demo scale.
+- Region: matches `AWS_REGION`.
+
+`pnpm db:setup` creates the same table locally; it is not run against AWS. The
+resolver's due-guess discovery uses `Scan`; at demo scale the table is small, so
+no GSI or secondary index is provisioned.
+
+### Least-privilege IAM policy
+
+Grant the app's runtime identity only these actions on the specific table. Replace
+`<REGION>`, `<ACCOUNT_ID>`, and `<DYNAMODB_TABLE>` with the real values; the table
+ARN ends with the table name (no index ARN is needed).
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "dynamodb:GetItem",
+        "dynamodb:PutItem",
+        "dynamodb:UpdateItem",
+        "dynamodb:Scan"
+      ],
+      "Resource": "arn:aws:dynamodb:<REGION>:<ACCOUNT_ID>:table/<DYNAMODB_TABLE>"
+    }
+  ]
+}
+```
+
+- `GetItem` reads player state; `PutItem` creates a player; `UpdateItem` accepts a
+  guess and atomically resolves it; `Scan` is the resolver's due-guess discovery.
+- Local `pnpm db:setup` additionally needs `DescribeTable`/`CreateTable`; the
+  isolated `pnpm test:integration` run additionally needs `DeleteTable`. Those are
+  local/test-only and are intentionally not in the runtime policy. Neither is run
+  against the production table.
+
+### Troubleshooting and logs
+
+- **Where logs live:** Render dashboard → the service → **Logs**. Fastify writes
+  structured JSON; automatic request/error serializers omit URLs, headers, IPs,
+  names, credentials, and raw errors. No external observability service is added.
+- **Correlating a request or job:** each response has a server-issued request ID in
+  the `reqId` log field; player requests also log fixed `event`/`category`/
+  `operation` fields. Pricing and resolver work logs safe generated job IDs. Search
+  the logs by that ID to follow one request or sweep.
+- **Provider vs storage vs resolver vs session:**
+  - Provider trouble: pricing warnings (elapsed/receipt age, retry delay);
+    `pricing.status` becomes `stale`/`unavailable`, and guesses stay pending.
+  - Storage trouble: error-level storage categories; player routes return 503
+    `persistence_unavailable`.
+  - Resolver trouble: degraded discovery/provider/resolution events with bounded
+    counts; expected obsolete conflicts aggregate at info.
+  - Session trouble: a missing/expired `btc_player` cookie gives 401 `unauthorized`;
+    create a player again with `POST /api/players`.
+- **Repeated failures/recovery:** failures are rate-limited to one warning per
+  operation per minute per instance; a success logs one recovery, so a single
+  recovery line confirms a retry worked. Routine validation/auth/conflict responses
+  and successful operations are intentionally not logged.
+
+### Deployment limitations
+
+- **Render free sleep/wake:** the free instance sleeps when idle. On wake it must
+  restart and catch up. Pending guesses are recovered from DynamoDB (not memory),
+  so sleep only **delays** resolution until the service wakes; it does not lose
+  score. This demo does not guarantee always-on background resolution.
+- **Cookie loss loses the player:** identity is the `btc_player` HttpOnly session
+  cookie (no Max-Age/Expires). Clearing cookies or switching browsers starts a new
+  player; there is no password/login and no guaranteed identity after closing the
+  browser.
+- **Sampled pricing:** Coinbase `time` is the last trade timestamp, not a promise of
+  freshness; pricing is polled and cached (see the T003 table above), so the
+  displayed price is the last trusted observation, never an invented current price.
+  Stale data is labelled.
+- **Free-tier cost:** Render free instance, AWS on-demand DynamoDB at demo scale,
+  and unauthenticated Coinbase public data. Arrange an AWS budget alert; no paid
+  observability or extra service is added.
+
+### Deployment status and open items
+
+Verified so far: the public repository URL, the demo URL, static/asset serving, SPA fallback, API routing, and the `/api/health` check. Gameplay is not yet playable because AWS DynamoDB is not configured (`POST /api/players` returns `503 persistence_unavailable`).
+
+Remaining open items:
+- **Hosted smoke-test evidence** (onboarding, fresh price, submission/pending,
+  result and score, same-session reload, restart-pending recovery,
+  stale/provider-unavailable): `TBD — awaiting deploy`
+- **Restart/wake + stale verification:** `TBD — awaiting deploy`
+- **Diagnostics redaction review** (hosted logs checked for cookie headers,
+  credentials/digests, secrets, names, raw provider payloads): `TBD — awaiting
+  hosted log access`
+- **T006 gap-matrix summary:** see [docs/testing.md](docs/testing.md); every matrix
+  row has passing local evidence. Live provider health, AWS IAM, and hosted
+  deployment rows remain part of this task.
 
 ## Required game behavior
 

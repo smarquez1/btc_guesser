@@ -1,0 +1,26 @@
+# Render Blueprint for the BTC Guesser demo.
+# One free web service: Fastify serves the built React assets, the API, and the
+# background resolver. DynamoDB is provisioned separately in AWS; no disk, queue,
+# or Lambda is used. Secrets are entered in the Render dashboard (sync: false).
+services:
+  - type: web
+    name: btc-guesser
+    runtime: node
+    plan: free
+    autoDeployTrigger: commit
+    healthCheckPath: /api/health
+    buildCommand: pnpm install --frozen-lockfile && pnpm build
+    startCommand: pnpm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: "24"
+      - key: AWS_REGION
+        sync: false
+      - key: DYNAMODB_TABLE
+        sync: false
+      - key: AWS_ACCESS_KEY_ID
+        sync: false
+      - key: AWS_SECRET_ACCESS_KEY
+        sync: false
