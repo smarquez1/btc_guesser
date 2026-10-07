@@ -1,13 +1,13 @@
 import { Writable } from "node:stream";
 import type { FastifyInstance } from "fastify";
 import { afterEach, expect, it, vi } from "vitest";
-import { buildApp } from "./app.js";
+import { buildApp } from "../app.js";
 import {
   ActiveGuessConflict,
-  digestToken,
   type PlayerRecord,
   type PlayerStore,
-} from "./players.js";
+} from "../domain/player.js";
+import { digestToken } from "./auth.js";
 
 const apps: FastifyInstance[] = [];
 afterEach(async () => {

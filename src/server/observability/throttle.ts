@@ -11,9 +11,9 @@ export interface RateLimitPolicy {
   windowMs: number;
 }
 
-/** New players a single client address may create per minute. */
+/** New players one app instance may create per minute; all clients share it. */
 export const playerCreationPolicy: RateLimitPolicy = {
-  limit: 10,
+  limit: 60,
   windowMs: 60_000,
 };
 

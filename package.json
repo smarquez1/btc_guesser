@@ -11,7 +11,7 @@
   "scripts": {
     "build": "pnpm typecheck && vite build && tsc -p tsconfig.server.build.json",
     "check": "pnpm lint && pnpm typecheck && pnpm test",
-    "db:setup": "node --env-file-if-exists=.env --import tsx src/server/db-setup.ts",
+    "db:setup": "node --env-file-if-exists=.env --import tsx src/server/scripts/db-setup.ts",
     "dev": "concurrently --kill-others -n api,web \"pnpm dev:server\" \"pnpm dev:client\"",
     "dev:client": "vite",
     "dev:server": "node --env-file-if-exists=.env --import tsx --watch src/server/index.ts",
@@ -21,7 +21,7 @@
     "start": "node --env-file-if-exists=.env dist/server/index.js",
     "test": "vitest run",
     "test:e2e": "playwright test",
-    "test:integration": "node --env-file-if-exists=.env --import tsx src/server/db-integration.ts",
+    "test:integration": "node --env-file-if-exists=.env --import tsx src/server/scripts/db-integration.ts",
     "test:watch": "vitest",
     "typecheck": "tsc -p tsconfig.client.json && tsc -p tsconfig.server.json && tsc -p tsconfig.tools.json && tsc -p tsconfig.e2e.json"
   },

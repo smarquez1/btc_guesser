@@ -5,17 +5,21 @@ import {
   DescribeTableCommand,
 } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
-import { buildApp } from "./app.js";
-import { isAwsError } from "./aws-error.js";
-import { createDynamoClient, DynamoPlayerStore } from "./dynamodb.js";
-import { ensureTable, requireLocalEndpoint } from "./local-table.js";
+import { buildApp } from "../app.js";
 import {
   ActiveGuessConflict,
   ObsoleteGuessConflict,
   type PendingGuess,
   type ResolvedGuess,
-} from "./players.js";
-import { createResolver } from "./resolver.js";
+} from "../domain/player.js";
+import { isAwsError } from "../persistence/aws-error.js";
+import { createDynamoClient } from "../persistence/client.js";
+import {
+  ensureTable,
+  requireLocalEndpoint,
+} from "../persistence/local-table.js";
+import { DynamoPlayerStore } from "../persistence/player-store.js";
+import { createResolver } from "../resolution/resolver.js";
 
 requireLocalEndpoint();
 const table = `btc-guesser-test-${randomUUID()}`;

@@ -1,102 +1,32 @@
-import {
-  createHash,
-  randomBytes,
-  randomUUID,
-  timingSafeEqual,
-} from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import type { FastifyInstance, FastifyRequest } from "fastify";
-import { playerDiagnostics } from "./diagnostics.js";
-import type { DisplayPricing, PriceObservation } from "./pricing.js";
+import {
+  ActiveGuessConflict,
+  type PlayerOptions,
+  type PlayerRecord,
+} from "../domain/player.js";
+import { playerDiagnostics } from "../observability/diagnostics.js";
 import {
   createRateLimiter,
   playerCreationPolicy,
-  type RateLimitPolicy,
-} from "./rate-limit.js";
+} from "../observability/throttle.js";
+import {
+  digestToken,
+  matchesSessionDigest,
+  parsePlayerCookie,
+} from "./auth.js";
+import { publicPlayer } from "./presenter.js";
+import {
+  frameworkErrorStatus,
+  StorageUnavailable,
+  statusToErrorCode,
+} from "./request-errors.js";
 
-export interface PendingGuess {
-  id: string;
-  direction: "up" | "down";
-  startingPrice: string;
-  acceptedAt: number;
-  eligibleAt: number;
-}
-export interface GuessResolution {
-  result: "correct" | "incorrect";
-  scoreDelta: 1 | -1;
-  resolvedAt: number;
-  observedPrice: string;
-  observedAt: number;
-}
-export interface ResolvedGuess extends PendingGuess, GuessResolution {}
-export interface DueGuess {
-  playerId: string;
-  guess: PendingGuess;
-}
-export interface PlayerRecord {
-  playerId: string;
-  displayName: string;
-  sessionDigest: string;
-  score: number;
-  activeGuess?: PendingGuess;
-  latestGuess?: ResolvedGuess;
-}
-export interface PlayerStore {
-  create(player: PlayerRecord): Promise<void>;
-  get(playerId: string): Promise<PlayerRecord | undefined>;
-  accept(playerId: string, guess: PendingGuess): Promise<PlayerRecord>;
-  due(now: number, limit: number): Promise<DueGuess[]>;
-  resolve(playerId: string, guess: ResolvedGuess): Promise<PlayerRecord>;
-}
-export class ActiveGuessConflict extends Error {}
-export class ObsoleteGuessConflict extends Error {}
-class StorageUnavailable extends Error {}
-export interface PlayerOptions {
-  store?: PlayerStore;
-  production?: boolean;
-  now?: () => number;
-  id?: () => string;
-  token?: () => string;
-  // T003 owns freshness/validation; null means no fresh trusted observation.
-  price?: () => Promise<PriceObservation | null>;
-  displayPricing?: () => DisplayPricing;
-  // Bounds unauthenticated player creation; overridable for tests.
-  creationLimit?: RateLimitPolicy;
-  // Enables the creation limiter. Defaults to `production`: development traffic
-  // all arrives from one loopback address, so a per-address limit there would be
-  // effectively global and block normal play (including private windows).
-  rateLimit?: boolean;
-}
-export function digestToken(token: string) {
-  return createHash("sha256").update(token).digest("hex");
-}
-export function publicPlayer(player: PlayerRecord) {
-  const guess = (value: PendingGuess | ResolvedGuess | undefined) => {
-    if (!value) return null;
-    const pending = {
-      id: value.id,
-      direction: value.direction,
-      startingPrice: value.startingPrice,
-      acceptedAt: value.acceptedAt,
-      eligibleAt: value.eligibleAt,
-    };
-    if (!("result" in value)) return pending;
-    return {
-      ...pending,
-      result: value.result,
-      scoreDelta: value.scoreDelta,
-      resolvedAt: value.resolvedAt,
-      observedPrice: value.observedPrice,
-      observedAt: value.observedAt,
-    };
-  };
-  return {
-    id: player.playerId,
-    displayName: player.displayName,
-    score: player.score,
-    activeGuess: guess(player.activeGuess),
-    latestGuess: guess(player.latestGuess),
-  };
-}
+// Instance-wide creation throttle key: a single bucket for the whole app, so the
+// server never reads a client address. It bounds one instance's write
+// amplification, not per-client fairness.
+const CREATION_RATE_LIMIT_KEY = "instance";
+
 function singleField(body: unknown, key: string): unknown {
   if (!body || typeof body !== "object" || Array.isArray(body))
     return undefined;
@@ -104,32 +34,6 @@ function singleField(body: unknown, key: string): unknown {
   return fields.length === 1 && fields[0] === key
     ? Reflect.get(body, key)
     : undefined;
-}
-// Fastify framework errors are duck-typed: they carry a string `code` and a
-// numeric 4xx `statusCode`. Returns that status for recognized client errors.
-function frameworkErrorStatus(error: unknown): number | undefined {
-  if (
-    error instanceof Error &&
-    "code" in error &&
-    typeof error.code === "string" &&
-    error.code.startsWith("FST_ERR_") &&
-    "statusCode" in error &&
-    typeof error.statusCode === "number" &&
-    Number.isInteger(error.statusCode) &&
-    error.statusCode >= 400 &&
-    error.statusCode < 500
-  )
-    return error.statusCode;
-  return undefined;
-}
-function statusToErrorCode(status: number): string {
-  return status === 400
-    ? "invalid_body"
-    : status === 413
-      ? "payload_too_large"
-      : status === 415
-        ? "unsupported_media_type"
-        : "invalid_request";
 }
 /**
  * Minimum wait between accepting a guess and allowing resolution, in
@@ -208,21 +112,17 @@ export async function playerRoutes(
     return reply.code(503).send({ error: "persistence_unavailable" });
   });
   async function authenticate(request: FastifyRequest) {
-    const cookie = request.cookies.btc_player;
-    if (!cookie || !store) return undefined;
-    const match = /^([a-zA-Z0-9-]{1,64})\.([a-f0-9]{64})$/.exec(cookie);
-    if (!match) return undefined;
+    const session = parsePlayerCookie(request.cookies.btc_player);
+    if (!session || !store) return undefined;
     const player = await storageCall(request, "storage_read", () =>
-      store.get(match[1]),
+      store.get(session.playerId),
     );
-    if (!player || !/^[a-f0-9]{64}$/.test(player.sessionDigest))
-      return undefined;
-    return timingSafeEqual(
-      Buffer.from(player.sessionDigest, "hex"),
-      Buffer.from(digestToken(match[2]), "hex"),
+    if (
+      !player ||
+      !matchesSessionDigest(player.sessionDigest, session.credential)
     )
-      ? player
-      : undefined;
+      return undefined;
+    return player;
   }
   app.post("/api/players", async (request, reply) => {
     const name = singleField(request.body, "displayName");
@@ -233,9 +133,9 @@ export async function playerRoutes(
     const existing = await authenticate(request);
     if (existing) return reply.code(200).send(state(existing));
     // Only a genuine new-player creation consumes the budget; a returning
-    // session is never throttled. Production-only: development shares one
-    // loopback address for every browser.
-    if (creationLimiter && !creationLimiter.allow(request.ip)) {
+    // session is served before this check and is never throttled. The bucket is
+    // instance-wide and reads no client address; enabled in production only.
+    if (creationLimiter && !creationLimiter.allow(CREATION_RATE_LIMIT_KEY)) {
       reply.header("Retry-After", String(creationLimiter.retryAfterSeconds()));
       return reply.code(429).send({ error: "too_many_requests" });
     }

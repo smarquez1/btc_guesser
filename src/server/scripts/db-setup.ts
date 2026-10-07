@@ -1,5 +1,8 @@
-import { createDynamoClient } from "./dynamodb.js";
-import { ensureTable, requireLocalEndpoint } from "./local-table.js";
+import { createDynamoClient } from "../persistence/client.js";
+import {
+  ensureTable,
+  requireLocalEndpoint,
+} from "../persistence/local-table.js";
 
 requireLocalEndpoint();
 const table = process.env.DYNAMODB_TABLE?.trim();

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { PendingGuess } from "./players.js";
-import type { PriceObservation } from "./pricing.js";
+import type { PriceObservation } from "../pricing/policy.js";
+import type { PendingGuess } from "./player.js";
 import { resolveGuess } from "./resolution.js";
 
 const eligibleAt = 61_000;

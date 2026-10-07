@@ -1,14 +1,14 @@
 import { fileURLToPath } from "node:url";
 import { buildApp } from "./app.js";
-import { runtimePersistence } from "./dynamodb.js";
-import { createFatalHandler } from "./fatal.js";
-import { guessMinWaitMs } from "./players.js";
-import { createPricingService } from "./pricing.js";
+import { createFatalHandler } from "./observability/fatal.js";
 import {
   persistenceConfigError,
   timingConfigError,
-} from "./production-config.js";
-import { createResolver } from "./resolver.js";
+} from "./observability/production-config.js";
+import { runtimePersistence } from "./persistence/runtime.js";
+import { guessMinWaitMs } from "./player/routes.js";
+import { createPricingService } from "./pricing/service.js";
+import { createResolver } from "./resolution/resolver.js";
 
 const production =
   process.env.NODE_ENV === "production" ||

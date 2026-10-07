@@ -8,7 +8,7 @@
 //
 // The real acceptance-window code path runs unchanged: the launcher sets
 // GUESS_MIN_WAIT_MS (via the Playwright webServer env) so the runtime seam in
-// `players.ts` shortens the 60s window for this journey only.
+// `player/routes.ts` shortens the 60s window for this journey only.
 
 import { randomUUID } from "node:crypto";
 import { DeleteTableCommand } from "@aws-sdk/client-dynamodb";
@@ -20,18 +20,17 @@ import {
 } from "@aws-sdk/lib-dynamodb";
 import Fastify from "fastify";
 import { buildApp } from "../../src/server/app.js";
-import { isAwsError } from "../../src/server/aws-error.js";
-import {
-  createDynamoClient,
-  DynamoPlayerStore,
-} from "../../src/server/dynamodb.js";
+import { isAwsError } from "../../src/server/persistence/aws-error.js";
+import { createDynamoClient } from "../../src/server/persistence/client.js";
 import {
   ensureTable,
   requireLocalEndpoint,
-} from "../../src/server/local-table.js";
-import { guessMinWaitMs } from "../../src/server/players.js";
-import { createPricingService, validPrice } from "../../src/server/pricing.js";
-import { createResolver } from "../../src/server/resolver.js";
+} from "../../src/server/persistence/local-table.js";
+import { DynamoPlayerStore } from "../../src/server/persistence/player-store.js";
+import { guessMinWaitMs } from "../../src/server/player/routes.js";
+import { validPrice } from "../../src/server/pricing/policy.js";
+import { createPricingService } from "../../src/server/pricing/service.js";
+import { createResolver } from "../../src/server/resolution/resolver.js";
 
 requireLocalEndpoint();
 

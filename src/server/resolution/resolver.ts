@@ -1,13 +1,13 @@
 import { randomUUID } from "node:crypto";
-import { resolverDiagnostics } from "./diagnostics.js";
-import type { ResolverLog } from "./log.js";
 import {
   type DueGuess,
   ObsoleteGuessConflict,
   type PlayerStore,
-} from "./players.js";
-import type { PriceObservation } from "./pricing.js";
-import { resolveGuess } from "./resolution.js";
+} from "../domain/player.js";
+import { resolveGuess } from "../domain/resolution.js";
+import { resolverDiagnostics } from "../observability/diagnostics.js";
+import type { ResolverLog } from "../observability/log.js";
+import type { PriceObservation } from "../pricing/policy.js";
 
 export const resolverPolicy = { pollMs: 5_000, batchLimit: 100 } as const;
 

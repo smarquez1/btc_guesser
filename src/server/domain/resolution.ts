@@ -1,5 +1,9 @@
-import type { GuessResolution, PendingGuess } from "./players.js";
-import { comparePrices, isFresh, type PriceObservation } from "./pricing.js";
+import {
+  comparePrices,
+  isFresh,
+  type PriceObservation,
+} from "../pricing/policy.js";
+import type { GuessResolution, PendingGuess } from "./player.js";
 
 // Pure guess resolution: no clock, provider, or storage access.
 // The provider trade timestamp is market-data context; eligibility requires the

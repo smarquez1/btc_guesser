@@ -6,13 +6,11 @@ import Fastify, {
   type FastifyServerOptions,
   LogController,
 } from "fastify";
-import {
-  type PlayerOptions,
-  type PlayerStore,
-  playerRoutes,
-} from "./players.js";
-import type { PriceObservation, PricingService } from "./pricing.js";
-import type { Resolver } from "./resolver.js";
+import type { PlayerOptions, PlayerStore } from "./domain/player.js";
+import { playerRoutes } from "./player/routes.js";
+import type { PriceObservation } from "./pricing/policy.js";
+import type { PricingService } from "./pricing/service.js";
+import type { Resolver } from "./resolution/resolver.js";
 
 const notFoundBody = {
   statusCode: 404,

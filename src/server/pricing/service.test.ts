@@ -1,11 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   comparePrices,
-  createPricingService,
   isFresh,
   tradeTimestamp,
   validPrice,
-} from "./pricing.js";
+} from "./policy.js";
+import { createPricingService } from "./service.js";
 
 const epoch = Date.parse("2026-10-06T00:00:00Z");
 const ticker = {

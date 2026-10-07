@@ -1,13 +1,11 @@
-import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import {
-  DynamoDBDocumentClient,
+  type DynamoDBDocumentClient,
   GetCommand,
   PutCommand,
   ScanCommand,
   type ScanCommandOutput,
   UpdateCommand,
 } from "@aws-sdk/lib-dynamodb";
-import { isAwsError } from "./aws-error.js";
 import {
   ActiveGuessConflict,
   ObsoleteGuessConflict,
@@ -15,7 +13,8 @@ import {
   type PlayerRecord,
   type PlayerStore,
   type ResolvedGuess,
-} from "./players.js";
+} from "../domain/player.js";
+import { isAwsError } from "./aws-error.js";
 
 const ACTIVE_GUESS_NAMES = { "#active": "activeGuess" } as const;
 
@@ -47,25 +46,6 @@ function updatedPlayer(result: {
   return result.Attributes as unknown as PlayerRecord;
 }
 
-export function createDynamoClient(endpoint = process.env.DYNAMODB_ENDPOINT) {
-  if (endpoint) {
-    const url = new URL(endpoint);
-    if (!["localhost", "127.0.0.1", "[::1]"].includes(url.hostname))
-      throw new Error(
-        "DYNAMODB_ENDPOINT must be loopback (local development only)",
-      );
-  }
-  return new DynamoDBClient({
-    ...(endpoint
-      ? {
-          endpoint,
-          region: process.env.AWS_REGION ?? "us-east-1",
-          credentials: { accessKeyId: "local", secretAccessKey: "local" },
-        }
-      : {}),
-    maxAttempts: 2,
-  });
-}
 export class DynamoPlayerStore implements PlayerStore {
   // One Scan page per due() call; the cursor carries the sweep across ticks.
   private cursor?: NonNullable<ScanCommandOutput["LastEvaluatedKey"]>;
@@ -181,13 +161,4 @@ export class DynamoPlayerStore implements PlayerStore {
       guess: item.activeGuess as PendingGuess,
     }));
   }
-}
-export function runtimePersistence() {
-  const table = process.env.DYNAMODB_TABLE?.trim();
-  if (!table) return undefined;
-  const client = createDynamoClient();
-  return {
-    store: new DynamoPlayerStore(DynamoDBDocumentClient.from(client), table),
-    close: () => client.destroy(),
-  };
 }

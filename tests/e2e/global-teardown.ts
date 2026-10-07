@@ -7,7 +7,7 @@ import {
   DeleteTableCommand,
   ListTablesCommand,
 } from "@aws-sdk/client-dynamodb";
-import { createDynamoClient } from "../../src/server/dynamodb.js";
+import { createDynamoClient } from "../../src/server/persistence/client.js";
 
 const E2E_TABLE_PREFIX = "btc-guesser-e2e-";
 

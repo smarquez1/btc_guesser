@@ -1,17 +1,17 @@
 import { randomUUID } from "node:crypto";
 import type { FastifyInstance } from "fastify";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { type AppOptions, buildApp } from "./app.js";
+import { type AppOptions, buildApp } from "../app.js";
 import {
   ActiveGuessConflict,
   type DueGuess,
-  guessMinWaitMs,
   ObsoleteGuessConflict,
   type PlayerRecord,
   type PlayerStore,
   type ResolvedGuess,
-} from "./players.js";
-import { createPricingService } from "./pricing.js";
+} from "../domain/player.js";
+import { createPricingService } from "../pricing/service.js";
+import { guessMinWaitMs } from "./routes.js";
 
 function memoryStore() {
   const records = new Map<string, PlayerRecord>();
@@ -430,7 +430,7 @@ describe("player API", () => {
     });
     expect(repeat.json()).toEqual(accepted?.json());
   });
-  it("throttles new-player creation per client address without counting returning sessions", async () => {
+  it("throttles new-player creation instance-wide without counting returning sessions", async () => {
     const { store } = memoryStore();
     const app = setup({
       store,
@@ -451,8 +451,9 @@ describe("player API", () => {
     expect(throttled.statusCode).toBe(429);
     expect(throttled.json()).toEqual({ error: "too_many_requests" });
     expect(throttled.headers["retry-after"]).toBe("60");
-    // A different client address has its own budget.
-    expect((await createFrom("198.51.100.8")).statusCode).toBe(201);
+    // The bucket is instance-wide: the client address is not read, so a
+    // different address shares the same budget.
+    expect((await createFrom("198.51.100.8")).statusCode).toBe(429);
     // A returning session is served from its cookie and never throttled.
     const returning = await app.inject({
       method: "POST",
@@ -484,7 +485,7 @@ describe("player API", () => {
     clock = 1_000;
     expect((await createFrom()).statusCode).toBe(201);
   });
-  it("does not rate-limit creation outside production (loopback shares one address)", async () => {
+  it("does not rate-limit creation outside production", async () => {
     const { store } = memoryStore();
     const app = setup({
       store,

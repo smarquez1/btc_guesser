@@ -1,13 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { StorageDeadlineError } from "./dynamodb.js";
 import {
   type DueGuess,
   ObsoleteGuessConflict,
   type PendingGuess,
   type PlayerRecord,
   type PlayerStore,
-} from "./players.js";
-import type { PriceObservation } from "./pricing.js";
+} from "../domain/player.js";
+import { StorageDeadlineError } from "../persistence/player-store.js";
+import type { PriceObservation } from "../pricing/policy.js";
 import { createResolver, resolverPolicy } from "./resolver.js";
 
 const epoch = Date.parse("2026-10-06T00:00:00Z");

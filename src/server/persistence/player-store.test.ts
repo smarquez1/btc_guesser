@@ -5,12 +5,7 @@ import {
   UpdateCommand,
 } from "@aws-sdk/lib-dynamodb";
 import { describe, expect, it, vi } from "vitest";
-import { buildApp } from "./app.js";
-import {
-  DynamoPlayerStore,
-  StorageDeadlineError,
-  storagePolicy,
-} from "./dynamodb.js";
+import { buildApp } from "../app.js";
 import {
   ActiveGuessConflict,
   ObsoleteGuessConflict,
@@ -18,7 +13,12 @@ import {
   type PlayerRecord,
   type PlayerStore,
   type ResolvedGuess,
-} from "./players.js";
+} from "../domain/player.js";
+import {
+  DynamoPlayerStore,
+  StorageDeadlineError,
+  storagePolicy,
+} from "./player-store.js";
 
 const player: PlayerRecord = {
   playerId: "player",
