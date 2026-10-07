@@ -32,7 +32,8 @@ direct evidence yet.
 |---|---|---|
 | Exact decimal comparison (scale, leading zeros, full precision) | `src/server/pricing.test.ts` "compares full precision, unequal scales and leading zeros exactly"; `src/server/resolution.test.ts` "keeps equal values pending across precision and leading zeros", "resolves a full-precision difference that rounds to the same display price" | Covered |
 | Receipt-time deadline boundaries (before/at deadline) | `src/server/resolution.test.ts` "keeps a pre-deadline receipt pending even after the deadline", "treats a receipt exactly at the deadline as eligible" | Covered |
-| Pre-deadline move still present afterward | `src/server/resolution.test.ts` "keeps a differing price pending before the deadline" | Covered |
+| Pre-deadline move still present afterward | `src/server/resolution.test.ts` "keeps a differing price pending before the deadline"; "counts a pre-deadline move that is still different at the post-deadline check" | Covered |
+| Pre-deadline move that reverts before the check stays pending | `src/server/resolution.test.ts` "keeps a guess pending when a pre-deadline move has reverted by the check" | Covered |
 | Provider trade timestamp is context, not a gate | `src/server/resolution.test.ts` "ignores the provider trade timestamp for eligibility" | Covered |
 | Equal / stale / failed data stays pending | `src/server/resolution.test.ts` (equal); `src/server/resolver.test.ts` ineligible/equal/unavailable non-writing sweep | Covered |
 | Cache and single-flight recovery | `src/server/pricing.test.ts` shared-request/cache-receipt, stale-after-failure + cooldown + recovery, expiry without reads refreshing receipt | Covered |

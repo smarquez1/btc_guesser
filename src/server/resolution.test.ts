@@ -61,6 +61,33 @@ describe("resolveGuess", () => {
     ).toMatchObject({ result: "correct", scoreDelta: 1 });
   });
 
+  // Pins the deliberate fairness interpretation: a move that began before the
+  // deadline is credited once it is still different at the post-deadline check,
+  // because the rule's two conditions ("the price changes" and "at least 60
+  // seconds have passed") hold together at the check.
+  it("counts a pre-deadline move that is still different at the post-deadline check", () => {
+    const movedAt = eligibleAt - 30_000;
+    const receivedAt = eligibleAt + 1_000;
+    expect(
+      resolveGuess(
+        guess,
+        observation("64123.457", receivedAt, new Date(movedAt).toISOString()),
+        receivedAt,
+      ),
+    ).toMatchObject({ result: "correct", scoreDelta: 1 });
+  });
+
+  it("keeps a guess pending when a pre-deadline move has reverted by the check", () => {
+    const receivedAt = eligibleAt + 1_000;
+    expect(
+      resolveGuess(
+        guess,
+        observation(guess.startingPrice, receivedAt),
+        receivedAt,
+      ),
+    ).toBeNull();
+  });
+
   it("keeps equal values pending across precision and leading zeros", () => {
     expect(
       resolveGuess(guess, observation("64123.456000", eligibleAt), eligibleAt),

@@ -148,7 +148,11 @@ and the trusted observation's **server `receivedAt`** are both at or after
 full-precision values exactly: equal prices keep the guess pending, and the
 latest fresh observation at check time decides `correct` (+1) or `incorrect`
 (−1). A move before the deadline counts if the price is still different when
-checked after it; stale or unavailable observations never resolve. A bounded
+checked after it; stale or unavailable observations never resolve. This is the
+deliberate reading of "the price changes and at least 60 seconds have passed":
+both conditions hold together at the check, so a move that persists past the
+deadline decides, while a move that reverts before the check is not observed.
+A bounded
 in-process resolver sweeps every 5 seconds, shares one trusted observation per
 sweep, and commits each outcome with one conditional write that pins
 `activeGuess.id`, so concurrent retries cannot score twice. Full policy rationale

@@ -134,6 +134,13 @@ workers, retries, or obsolete observations fail that condition and are classifie
 as expected `ObsoleteGuessConflict` outcomes, never as infrastructure failures,
 so they cannot score twice or resolve a replacement guess.
 
+Fairness rationale: a move that began before the deadline is credited once the
+price is still different at the post-deadline check, because the rule's two
+conditions ("the price changes" and "at least 60 seconds have passed") hold
+together at the check; a move that reverts before the check is unobserved. The
+trade timestamp is context/freshness, not an additional deadline gate. This is
+deliberate and pinned by tests in `resolution.test.ts`.
+
 A bounded in-process resolver (`src/server/resolver.ts`) starts with the app when
 persistence and pricing are configured. It sweeps every 5 seconds after the
 previous sweep settles (no overlap) with a bounded scan page; each sweep shares
