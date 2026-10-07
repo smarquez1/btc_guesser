@@ -1,229 +1,67 @@
 # Backend guidance
 
-## Backend Structure
-
-Use a predictable backend layout:
-
-```text
-server/
-  routes/
-  services/
-  repositories/
-  schemas/
-  lib/
-  types/
-```
-
-Create folders only when needed. Keep application construction and process startup separate when useful; do not reorganize working entrypoints just to match a template.
-
-Responsibilities:
-
-- `routes/`: HTTP concerns only.
-- `services/`: business logic and application rules.
-- `repositories/`: DynamoDB access.
-- `schemas/`: request/response validation.
-- `lib/`: small shared infrastructure helpers and external clients.
-- `types/`: genuinely shared domain types.
-- `app.ts`: Fastify app construction and route registration.
-- `server.ts`: process startup only.
-
-Guidelines:
-
-- Keep files focused and reasonably small.
-- Avoid giant route handlers.
-- Avoid giant utility files.
-- Avoid arbitrary folder proliferation.
-- Routes should not contain business logic.
-- Routes should not contain direct DynamoDB access when that logic belongs in a repository.
-- Reuse shared game rules instead of duplicating them across routes.
-- Keep I/O separate from business logic where practical.
-- Do not introduce extra layers beyond route/service/repository unless there is a concrete reason.
-
-Avoid architectures like:
-
-```text
-Controller
-→ Handler
-→ UseCase
-→ Manager
-→ Service
-→ Repository
-→ Adapter
-```
-
-for simple operations.
-
-## Frontend / Backend Boundary
-
-The backend is authoritative for:
-
-- player/session validity
-- game rules
-- guess validation
-- BTC price observations
-- observation timestamps
-- price freshness
-- caching
-- deadlines
-- result resolution
-- persistence
-
-The frontend may:
-
-- render backend state
-- collect user input
-- call APIs
-- display countdowns
-- manage presentation-only state
-
-Do not duplicate authoritative game logic in React.
-
-Never trust client-provided:
-
-- timestamps
-- deadlines
-- prices
-- game results
-- player state
-- win/loss decisions
-
-## Player Identity
-
-Do not build full authentication unless explicitly required.
-
-Use anonymous players.
-
-A typical flow may be:
-
-```text
-first visit
-→ create anonymous player
-→ backend generates UUID
-→ frontend stores player/session identifier locally
-→ later requests reuse that identity
-```
-
-The backend must still validate player-related requests.
-
-Use proportionate abuse protection for player creation:
-
-- cheap rate limiting or throttling
-- TTL/cleanup for ephemeral records
-
-Do not add:
-
-- OAuth
-- passwords
-- account recovery
-- Cognito flows
-- full identity management
-
-unless required by the assignment.
-
-## Coinbase Integration
-
-Coinbase is the source for BTC/USD prices.
-
-Keep Coinbase access behind a small backend service.
-
-Normalize observations into a structure like:
-
-```ts
-type PriceObservation = {
-  price: number;
-  observedAt: number;
-};
-```
-
-The timestamp matters.
-
-Do not confuse:
-
-```text
-time the backend returned a price
-```
-
-with:
-
-```text
-time the price was actually observed
-```
-
-## Price Caching
-
-Caching is required.
-
-Prefer DynamoDB as the shared cache.
-
-Do not add Redis or ElastiCache unless there is a compelling requirement.
-
-A cached observation should preserve at least:
-
-```ts
-{
-  symbol: "BTC-USD",
-  price: number,
-  observedAt: number,
-  expiresAt: number
-}
-```
-
-Use TTL where appropriate.
-
-Important rule:
-
-> A cached observation keeps its original `observedAt`.
-
-Reading it later must never make it appear newer.
-
-Keep these concepts separate:
-
-- cache freshness
-- observation timestamp
-- game-resolution eligibility
-
-A price observed before a deadline remains a pre-deadline observation even if it is returned from cache after the deadline.
-
-## Game Resolution
-
-Resolve guesses only on the backend.
-
-The backend decides:
-
-- whether the guess is valid
-- when the deadline occurs
-- which price observation is eligible
-- whether the result is pending
-- whether the player won or lost
-
-Prefer lazy/on-demand resolution over background infrastructure.
-
-A simple flow is preferred:
-
-```text
-submit guess
-→ store guess and deadline
-→ frontend polls/fetches later
-→ backend resolves when eligible
-```
-
-Do not add:
-
-- queues
-- cron jobs
-- scheduled workers
-- event buses
-- distributed workflows
-
-unless they are genuinely required.
-
-Store enough state to explain a resolved result deterministically.
-
-## API Style
-
-Keep the API small and explicit.
-
-A reasonable shape may be:
+## Structure and ownership
+
+Keep files focused and create folders only when needed:
+
+- `server/routes/`: HTTP handling and status codes.
+- `server/services/`: business rules and orchestration.
+- `server/repositories/`: explicit DynamoDB reads and writes.
+- `server/schemas/`: request/response validation.
+- `server/lib/`: small infrastructure helpers and external clients.
+- `server/types/`: genuinely shared domain types.
+
+Separate Fastify app construction and route registration from process startup
+when useful. Preserve working entrypoints rather than renaming them to fit a
+template. Keep I/O separate from business rules where practical, reuse shared
+rules across routes, and avoid extra architectural layers.
+
+The backend owns identity validation, game rules, prices, timestamps, caching,
+deadlines, resolution, and persistence. The frontend renders server state,
+collects input, calls APIs, and displays countdowns. Never trust client-provided
+prices, timestamps, deadlines, results, scores, or player state.
+
+## Anonymous players
+
+The backend generates an anonymous identifier, which the frontend retains for
+later requests. Validate player identity on the backend. Add cheap rate limiting
+for player creation and TTL/cleanup for ephemeral records. Full authentication
+is out of scope unless explicitly required.
+
+## Prices and caching
+
+Use integer Unix epoch seconds for all backend timestamps, including `observedAt`,
+guess times, deadlines, and TTL. Convert to milliseconds only for JavaScript
+dates or timers.
+
+Fetch BTC/USD from Coinbase through a small backend service. Normalize each
+observation to `{ price: number, observedAt: number }`; `observedAt` is when the
+price was observed, not when it was returned to the client.
+
+Use DynamoDB as the shared cache, storing at least `symbol`, `price`,
+`observedAt`, and `expiresAt`, with appropriate TTL. Keep cache freshness,
+observation time, and resolution eligibility separate. Reads must preserve
+`observedAt`: an observation from before a deadline stays ineligible even when
+read after that deadline. Avoid Redis or ElastiCache without a concrete need.
+
+## Game rules and resolution
+
+- Players start at zero and may have only one unresolved guess.
+- The backend sets the starting price, start time, and 60-second deadline.
+- Resolve only with an observation at or after the deadline whose price differs
+  from the starting price. Equal prices remain pending.
+- Correct guesses earn +1; incorrect guesses lose 1. Persist scores in DynamoDB.
+- Store enough evidence to explain each result deterministically.
+- Enforce one pending guess atomically. Persist the resolved result and score
+  change together exactly once, including under concurrent requests or retries.
+
+Prefer lazy resolution: submit and store the guess, then resolve on a later
+fetch when an eligible observation exists. Background queues, schedules, and
+workers are unnecessary unless a concrete requirement emerges.
+
+## API and persistence
+
+Keep the API small and explicit. A suggested shape is:
 
 ```text
 POST /api/players
@@ -232,39 +70,42 @@ POST /api/guesses
 GET  /api/guesses/:id
 ```
 
-Adapt only if the assignment requires it.
+Validate all input server-side, using Fastify schemas where practical. Return
+sensible status codes and explicitly handle invalid players/guesses, missing
+or stale prices, Coinbase unavailability, pending results, and DynamoDB failures.
+Do not expose internal error details.
 
-Validate all API input server-side.
+Use straightforward DynamoDB keys and understandable records based on required
+access patterns. Avoid elaborate single-table designs without justification.
+Keep database access in repositories and use TTL for ephemeral data.
+TTL deletion is asynchronous: check expiry explicitly rather than relying on
+records disappearing. Cleanup expiry and cache freshness remain separate concerns.
 
-Use Fastify schemas where practical.
 
-Return sensible HTTP status codes.
+## Storage model
 
-Handle expected failures explicitly:
+One table uses string keys `pk` and `sk`; no secondary indexes are needed for
+current access patterns:
 
-- invalid player
-- invalid guess
-- missing or stale price
-- Coinbase unavailable
-- result not ready
-- DynamoDB failure
+| Record | pk | sk | Access |
+| --- | --- | --- | --- |
+| Player | `PLAYER#<id>` | `PROFILE` | Validate identity; read score and pending guess ID |
+| Guess | `GUESS#<id>` | `DETAILS` | Read pending state or saved result by ID |
+| Price cache | `PRICE#BTC-USD` | `LATEST` | Read/update the shared observation |
 
-Do not leak internal error details to the client.
+Players retain their score and have no TTL. Ephemeral records use `expiresAt`
+in epoch seconds. Cache freshness uses a separate `freshUntil` timestamp;
+`expiresAt` controls cleanup. Do not expire pending guesses independently of
+players: TTL must not leave a player pointing at a deleted unresolved guess.
+Choose retention for resolved guesses and other ephemeral records in their tasks.
 
-## DynamoDB
+Task 005 will use a conditional transaction to create a guess and set the
+player's pending guess ID only if none exists. Resolution will conditionally
+save the result, increment the player's score, and clear that pending ID in
+one transaction. This supports direct lookups, prevents conflicting submissions,
+and makes retries safe without locks or background workers.
 
-Keep the data model simple.
-
-Do not build an elaborate single-table design unless the access patterns clearly justify it.
-
-Prefer straightforward keys and understandable records.
-
-Use TTL for ephemeral data where appropriate.
-
-Use repositories for DynamoDB reads and writes.
-
-Do not mix DynamoDB concerns into route handlers.
-
-## Game invariants
-
-Players start at zero and may have only one unresolved guess. Resolve only using an observation at least 60 seconds after the guess starts and with a price different from the starting price. Equal prices remain pending. Correct guesses earn +1; incorrect guesses lose 1. Persist scores in DynamoDB and store enough state to explain every result deterministically. Reuse these rules across routes.
+`pnpm db:create` creates this table with on-demand billing and enables
+`expiresAt` TTL. It checks existing keys and TTL configuration on reruns.
+DynamoDB Local accepts TTL configuration but does not perform automatic TTL
+deletion; explicit expiry checks are still required.

@@ -1,6 +1,6 @@
 # BTC guess
 
-The project is in setup. The client currently renders an empty React root. The approved UI mockup is in [docs/ui.pen](docs/ui.pen); implementation tasks and status are tracked in [docs/tasks/index.md](docs/tasks/index.md).
+The backend foundation provides a health endpoint and local DynamoDB setup. The client currently renders an empty React root. The approved UI mockup is in [docs/ui.pen](docs/ui.pen); implementation tasks and status are tracked in [docs/tasks/index.md](docs/tasks/index.md).
 
 ## Development tools
 
@@ -10,22 +10,47 @@ Tool versions are recorded in `.tool-versions` for mise. Node and pnpm match ver
 mise install
 mise exec -- pnpm install
 cp .env.example .env
+docker compose up -d
 mise exec -- pnpm db:create
 ```
 
-`db:create` requires DynamoDB at the endpoint configured in `.env`. Start the backend and frontend in separate terminals:
+Docker Compose runs DynamoDB Local on `127.0.0.1:8000` with a persistent named
+volume. Stop it with `docker compose down`; the data remains for the next start.
+If port 8000 is occupied, run `DYNAMODB_LOCAL_PORT=8001 docker compose up -d`
+and set `DYNAMODB_ENDPOINT=http://127.0.0.1:8001` in `.env`.
+The local credentials in `.env.example` are placeholders, not AWS credentials.
+
+`db:create` uses the endpoint configured in `.env`, creates the table if missing,
+checks its string `pk`/`sk` keys, and enables `expiresAt` TTL. It is safe to rerun
+and refuses to run without an explicit endpoint. See [the storage model](docs/backend.md#storage-model).
+
+Start the backend and frontend in separate terminals:
 
 ```sh
 mise exec -- pnpm dev:server
 mise exec -- pnpm dev
 ```
 
-Build and run the production app:
+Check `http://127.0.0.1:3000/api/health` for `{ "status": "ok" }`. This is a
+process health check, not a DynamoDB readiness check. Vite proxies `/api` to
+port 3000; update `vite.config.ts` if you change the backend port.
+
+The backend validates configuration before listening. `PORT` defaults to 3000,
+`HOST` to `127.0.0.1`, and `COOKIE_SECURE` to false. `AWS_REGION`,
+`DYNAMODB_TABLE`, and `APP_ORIGIN` are required. `APP_ORIGIN` must be a browser
+origin without a path. Identity settings are reserved for task 003.
+
+Build the client and run the backend:
 
 ```sh
 mise exec -- pnpm build
 mise exec -- pnpm start
 ```
+
+The backend currently serves only API routes; serving the built client and
+production deployment belong to task 009. For AWS, omit `DYNAMODB_ENDPOINT`
+and the local credential placeholders, and use the normal AWS credential chain.
+Do not use `db:create` to provision deployed infrastructure.
 
 ## Project MCP servers
 
@@ -68,4 +93,26 @@ pnpm lint
 pnpm typecheck
 ```
 
-Automated tests remain deferred. Formatting is not part of the commit hook.
+Formatting is not part of the commit hook. Add and run unit tests when the
+developer asks, before committing related work. The hook does not run tests.
+
+## Tests
+
+```sh
+mise exec -- pnpm test
+```
+
+This runs deterministic configuration unit tests and Fastify integration tests
+using injection, without a listening server or external services.
+
+For real DynamoDB integration tests, start the local container and explicitly
+choose its loopback endpoint:
+
+```sh
+TEST_DYNAMODB_ENDPOINT=http://127.0.0.1:8000 mise exec -- pnpm test:integration
+```
+
+Use port 8001 if configured above. These tests create uniquely named temporary
+tables and delete them afterward; they do not use the application table or AWS
+credentials. They verify table setup, reruns, incompatible keys/TTL, and document
+reads/writes. End-to-end tests remain deferred to task 008.

@@ -10,11 +10,12 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "dev:server": "node --env-file-if-exists=.env --watch --import tsx server/index.ts",
-    "build": "tsc --noEmit && vite build",
+    "build": "pnpm typecheck && vite build",
     "start": "node --env-file-if-exists=.env --import tsx server/index.ts",
     "test": "node --import tsx --test tests/*.test.ts",
+    "test:integration": "node --import tsx --test tests/integration/*.test.ts",
     "typecheck": "tsc --noEmit",
-    "format": "prettier --write src server tests infra *.json *.ts README.md",
+    "format": "biome format --write .",
     "db:create": "node --env-file-if-exists=.env --import tsx scripts/create-table.ts",
     "lint": "biome lint . --error-on-warnings",
     "prepare": "lefthook install"
@@ -33,16 +34,15 @@
     "tsx": "^4.23.15"
   },
   "devDependencies": {
+    "@biomejs/biome": "2.5.15",
     "@tailwindcss/vite": "^4.3.3",
     "@types/node": "^26.6.4",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.2",
-    "prettier": "^3.9.9",
+    "lefthook": "2.1.17",
     "tailwindcss": "^4.3.3",
     "typescript": "^7.0.2",
-    "vite": "^8.3.3",
-    "@biomejs/biome": "2.5.15",
-    "lefthook": "2.1.17"
+    "vite": "^8.3.3"
   }
 }

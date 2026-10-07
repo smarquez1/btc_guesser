@@ -1,0 +1,12 @@
+services:
+  dynamodb:
+    image: amazon/dynamodb-local:3.3.0
+    # Docker creates the named volume as root; allow SQLite to write to it.
+    user: '0:0'
+    command: '-jar DynamoDBLocal.jar -sharedDb -dbPath /home/dynamodblocal/data'
+    ports:
+      - '127.0.0.1:${DYNAMODB_LOCAL_PORT:-8000}:8000'
+    volumes:
+      - dynamodb-data:/home/dynamodblocal/data
+volumes:
+  dynamodb-data:

@@ -15,9 +15,21 @@ This challenge targets desktop only. Use the 16:10 mockup as the reference; mobi
 
 Prefer explicit, boring code, focused files, and small local React state. Apply DRY to shared behavior and business rules, not a few repeated lines. Add dependencies, folders, helpers, or layers only for a concrete need.
 
+Keep the implementation easy to walk through from route to service to repository. Prefer small functions and explicit operations; do not add abstractions for hypothetical future needs.
+
 Use routes for HTTP handling, services for business logic, repositories for explicit DynamoDB access, schemas for validation, and lib for small infrastructure helpers. Create folders only when needed. Keep genuinely shared domain types in types. Separate I/O from business logic where practical.
 
 The backend owns validation, timestamps, prices, caching, resolution, and persistence. The frontend renders server state, collects input, and calls APIs. Never trust client-provided game state or timestamps.
+
+## Formatting and readability
+
+- Use Biome for formatting and linting; do not add Prettier or ESLint.
+- Biome preserves blank lines but cannot insert them, so apply the conventions below by hand.
+- Separate distinct logical steps inside functions with a single blank line.
+- Always add a blank line after guard clauses and early returns.
+- Separate setup, validation, side effects, computation, and return statements when they form distinct logical blocks.
+- Avoid dense blocks of consecutive statements even when Biome permits them.
+- Use descriptive names and consistent indentation, and keep functions small and focused.
 
 ## Game invariants
 
@@ -25,6 +37,8 @@ The backend owns validation, timestamps, prices, caching, resolution, and persis
 - Resolve only after at least 60 seconds using an eligible observation with a price different from the starting price. Equal prices remain pending.
 - Correct guesses earn +1; incorrect guesses lose 1. Persist scores in DynamoDB.
 - Preserve cached `observedAt`; reads never refresh it. Keep cache freshness separate from resolution eligibility.
+- Use integer Unix epoch seconds for all backend timestamps, including TTL. Convert to milliseconds only at JavaScript date/timer boundaries.
+- Enforce one pending guess atomically; persist each resolution and score change together exactly once.
 - Prefer lazy/on-demand resolution. Store enough state to explain results deterministically and reuse shared rules across routes.
 - Always display the score and latest available BTC/USD price.
 
@@ -34,7 +48,13 @@ Use anonymous identity with backend validation, cheap player-creation rate limit
 
 Avoid Redux, Zustand, queues, microservices, DI frameworks, generic repositories, custom design systems, and full authentication unless explicitly required. Prefer existing shadcn/ui primitives.
 
-Use Lefthook before commits to run Biome on staged files and `pnpm typecheck` (`tsc --noEmit`) on the whole project. Run lint and type checks only before committing or when the user explicitly asks. Do not run formatters unless explicitly asked. Add and run automated tests when undertaking the unit-test task. Most automated coverage should be fast, deterministic unit tests; keep end-to-end verification focused on the critical flow. Until that task, verify the working flow directly and use Playwright for meaningful UI changes without creating a test suite. CI remains deferred unless explicitly requested.
+## Commits and checks
+
+- Use Lefthook before commits to run Biome on staged files and `pnpm typecheck` (`tsc --noEmit`) on the whole project.
+- Run lint and type checks only before committing or when the user explicitly asks. Do not run formatters unless explicitly asked.
+- Add and run unit tests when the developer asks, before committing the related work. Keep most coverage fast and deterministic; add focused integration tests where real component interactions matter.
+- Defer end-to-end tests to the final verification task. Use Playwright for direct verification of meaningful UI changes. CI remains deferred unless explicitly requested.
+- Use focused commits with short imperative subjects. PRs explain purpose, link relevant issues, report validation and limitations, and include screenshots for visible changes.
 
 ## Task tracking
 
@@ -43,7 +63,7 @@ Use Lefthook before commits to run Biome on staged files and `pnpm typecheck` (`
 - Before starting work, read the relevant task and its dependencies, then mark it `in-progress` in the index.
 - Maintain each task's scope, acceptance criteria, validation results, and limitations. Record the reason for any blocked task.
 - Mark a task `done` only when its acceptance criteria are met and validation is recorded; keep the index current as work progresses.
-- Follow the planned sequence: UI mockup, backend foundation, anonymous players, BTC pricing, guess lifecycle, game UI, unit tests, focused end-to-end verification, then deployment. Complete unit tests before the end-to-end verification task.
+- Follow the planned sequence: UI mockup, backend foundation, anonymous players, BTC pricing, guess lifecycle, game UI, test coverage review, focused end-to-end verification, then deployment. Complete unit tests before the end-to-end verification task.
 
 ## Task-specific guidance
 
@@ -54,5 +74,3 @@ Read the relevant document before making changes:
 - Backend, pricing, game rules, API behavior, or persistence: [docs/backend.md](docs/backend.md).
 - UI design or implementation: [docs/ui.md](docs/ui.md). Use pen.dev before major screens, retain the `.pen` file, and verify the rendered implementation with Playwright.
 - MCP usage or AWS inspection: [docs/tools.md](docs/tools.md).
-
-Use descriptive names, consistent indentation, focused commits, and short imperative commit subjects. PRs should explain purpose, link relevant issues, report validation and limitations, and include screenshots for visible changes.
