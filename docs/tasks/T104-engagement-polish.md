@@ -9,7 +9,7 @@ work, to avoid a competing writer on the same components.
 
 **Dependency:** [T005 — Build the game interface](T005-game-interface.md). Start
 only after T005's state/interaction work is settled. Consume its components,
-state machine, and copy module rather than introducing a parallel UI.
+game hook, and copy module rather than introducing a parallel UI.
 
 Follow [product scope](../product-and-scope.md) and
 [technical approach](../technical-approach.md).
@@ -44,7 +44,7 @@ Follow [product scope](../product-and-scope.md) and
    if effects are unavailable.
 4. **Keep going.** After a result, give a clear call-to-action/focus to submit the
    next guess. It must still allow only one active guess.
-5. **Warmer copy.** Improve waiting/error wording in `ActionNotice` and related
+5. **Warmer copy.** Improve waiting/error wording in `Notice` and related
    states, centralizing any new strings in `copy.ts`. Do not overpromise a
    resolution time.
 6. **Keyboard guessing.** Allow ArrowUp / ArrowDown to submit an Up/Down guess
@@ -60,16 +60,15 @@ Follow [product scope](../product-and-scope.md) and
    the newest item visible, and provide a reduced-motion fallback. Announce only
    the meaningful transitions, never every item or animation frame.
 
-## Diagnostics — reuse, do not expand
+## Telemetry — add none
 
-- Reuse T005's existing diagnostics categories and request-ID correlation. Add no
-  telemetry, no new observability dependency, and no logging on animation frames,
-  countdown ticks, or price polls. Never log names, cookies, credentials, or
-  personal data.
+- The client has no diagnostics/telemetry layer by design. Add no telemetry, no
+  observability dependency, and no logging on animation frames, countdown ticks,
+  or price polls. Never log names, cookies, credentials, or personal data.
 
 ## Contracts and handoffs
 
-- **T005:** Consume its components, state machine, and server field names; this
+- **T005:** Consume its components, game hook, and server field names; this
   task is presentation-only and changes no backend contract, endpoint, or payload.
 - **Accessibility:** Preserve keyboard focus, labels, contrast, and restrained
   status announcements. Do not announce every tick or animation.

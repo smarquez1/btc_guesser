@@ -58,22 +58,23 @@ to all loading, pending, result, and error states with standard shadcn/ui + Tail
 ## Implementation handoff (2026-10-06)
 
 - `src/client/game/types.ts` — frozen client seam (`PlayerState`, `Pricing`,
-  `ActiveGuess`/`LatestGuess`, `ApiError`, `GameController`, `validateDisplayName`,
-  `remainingSeconds`).
-- `src/client/api.ts` — same-origin JSON client; classifies every documented code
-  and network failure, rethrows aborts, captures `x-request-id` defensively.
-- `src/client/diagnostics.ts` — DEV-only, allowlisted, rate-limited reporter
-  (category, operation, requestId, status; one emit per `operation:category`/60s).
-- `src/client/game/machine.ts` — pure reducer; a session failure preserves a known
-  player (stays ready), an unknown session → onboarding.
-- `src/client/game/useGame.ts` — recursive `setTimeout` polling (5s active / 15s
-  idle) with no overlap, a monotonic sequence gate for stale responses, abort on
-  unmount, a 1s countdown clock only while pending, authoritative reconciliation.
+  `ActiveGuess`/`LatestGuess`, `ApiError`, `GameController`, `remainingSeconds`).
+- `src/client/api.ts` — thin same-origin JSON client; reports the backend error
+  code and status, rethrows aborts, captures `x-request-id` defensively.
+- `src/client/game/useGame.ts` — one plain `useState`/`useEffect` hook (no reducer):
+  recursive `setTimeout` polling (5s active / 15s idle) with no overlap, a
+  monotonic sequence gate for stale responses, abort on unmount, a 1s countdown
+  clock only while pending, authoritative reconciliation. A session failure
+  preserves a known player (stays ready); an unknown session → onboarding.
 - `src/client/components/game/**` + `App.tsx` — every state from `GameController`
   with standard shadcn/Tailwind (only `input`/`card` added); copy centralized in
-  `copy.ts`.
-- `src/client/game/price-display.ts` — exact-decimal comparator mirroring the
-  server's `comparePrices`, used only to pick the display tint.
+  `copy.ts`; the price tint comes from the server's resolved result, so the client
+  never compares prices.
+
+Note (post-review): the client was later reduced to a thin presentation layer — the
+reducer state machine, the client diagnostics reporter, and the duplicated decimal
+comparator were removed. See `refactor(client): reduce the frontend to thin
+presentation` in git history for the current structure.
 - Test tooling: `vitest.config.ts` uses Vitest 5 `projects` (`server` = node,
   `client` = jsdom + `src/client/test/setup.ts`); added RTL, user-event, jest-dom,
   and jsdom. T006 still owns the Playwright journey.
