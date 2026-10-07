@@ -2,7 +2,13 @@
 
 The project folder is `btc_guesser`; the package name is `btc-guesser`.
 
-The backend provides a health endpoint, anonymous player identities, Coinbase BTC/USD pricing, guess submission and resolution, and local DynamoDB setup. The client currently renders an empty React root. The approved UI mockup is in [docs/ui.pen](docs/ui.pen); implementation tasks and status are tracked in [docs/tasks/index.md](docs/tasks/index.md).
+The backend provides a health endpoint, anonymous player identities, Coinbase BTC/USD pricing, guess submission and resolution, and local DynamoDB setup. The React game UI is being implemented in task 006 and still requires browser verification. The UI guide is in [docs/ui.pen](docs/ui.pen); implementation tasks and status are tracked in [docs/tasks/index.md](docs/tasks/index.md).
+
+The frontend uses React, TypeScript, Vite, and Tailwind CSS with semantic native
+HTML. Keep markup and styling minimal; small amounts of plain CSS are fine.
+The mockup guides layout and game states, without requiring exact visual matching.
+Task 006 retains Tailwind and removes unused shadcn configuration and dependencies.
+No UI component library is needed.
 
 ## Development tools
 
@@ -19,8 +25,7 @@ mise exec -- pnpm db:create
 Docker Compose runs DynamoDB Local on `127.0.0.1:8000` with a persistent named
 volume. Stop it with `docker compose down`; the data remains for the next start.
 If port 8000 is occupied, run `DYNAMODB_LOCAL_PORT=8001 docker compose up -d`
-and set both `DYNAMODB_ENDPOINT` and `TEST_DYNAMODB_ENDPOINT` to
-`http://127.0.0.1:8001` in `.env`.
+and set `DYNAMODB_ENDPOINT=http://127.0.0.1:8001` in `.env`.
 The local credentials in `.env.example` are placeholders, not AWS credentials.
 
 `.env` is required for backend startup, database setup, and integration tests.
@@ -36,6 +41,10 @@ Start the backend and frontend in separate terminals:
 mise exec -- pnpm dev:server
 mise exec -- pnpm dev
 ```
+
+Open the frontend at `http://127.0.0.1:5173`, matching `APP_ORIGIN` in
+`.env.example`. If an existing `.env` uses `http://localhost:5173`, update it to
+the same origin and restart the backend. Origin checks compare the exact host.
 
 Check `http://127.0.0.1:3000/api/health` for `{ "status": "ok" }`. This is a
 process health check, not a DynamoDB readiness check. Vite proxies `/api` to
@@ -151,7 +160,7 @@ cp codex-mcp.toml .codex/config.toml
 
 If you already have a project configuration, merge the MCP entries into it instead of replacing it. Restart Codex with this project trusted, then check `/mcp`.
 
-- [shadcn MCP](https://ui.shadcn.com/docs/mcp) provides components using the existing `components.json` and runs through pnpm.
+- The UI uses native HTML and Tailwind CSS; no shadcn MCP is needed.
 - [AWS API MCP](https://awslabs.github.io/mcp/servers/aws-api-mcp-server) inspects DynamoDB and deployment resources. `READ_OPERATIONS_ONLY=true` restricts AWS API calls to read operations; IAM permissions still apply.
 
 AWS MCP expects the `awslabs.aws-api-mcp-server` executable to be installed separately and available on PATH. It is not managed by this project. Install it in an external Python environment with Python 3.10+ using `python -m pip install awslabs.aws-api-mcp-server`.
@@ -168,7 +177,7 @@ Replace the example profile and region with your own. Never store credentials in
 
 ## Checks before commits
 
-Lefthook runs Biome on staged source files, TypeScript (`tsc --noEmit`) on the whole project, all unit and DynamoDB integration tests, and the production build before each commit, without rewriting files. DynamoDB Local must be running. Integration tests load `TEST_DYNAMODB_ENDPOINT` from `.env`, copied from `.env.example`; update it there when using a different local port. `pnpm install` installs the hook through the project's `prepare` script. To install it manually:
+Lefthook runs Biome on staged source files, TypeScript (`tsc --noEmit`) on the whole project, all unit and DynamoDB integration tests, and the production build before each commit, without rewriting files. DynamoDB Local must be running. Integration tests load `DYNAMODB_ENDPOINT` from `.env`, copied from `.env.example`; update it there when using a different local port. `pnpm install` installs the hook through the project's `prepare` script. To install it manually:
 
 ```sh
 pnpm exec lefthook install
@@ -197,16 +206,24 @@ server or external services. Pricing tests cover source validation, fetch-based
 freshness, unchanged tickers, expiry, stale fallback, and safe error responses. Player coverage includes identity validation, initial scores, cookie
 security, input/origin rejection, throttling, and safe database error responses.
 
+Frontend coverage uses Node's test runner, jsdom, React `act`, controlled fetch
+responses, and fake clocks. It covers API errors and identity recovery, pending
+guess recovery across tabs, duplicate submissions, stale-response rejection,
+uncertain submission recovery, Strict Mode cancellation, polling cleanup and
+retries, countdowns, and clearing result price colors on newer observations.
+These tests use no real network calls, database, browser, or timed waits.
+
 For real DynamoDB integration tests, start the local container and set
-`TEST_DYNAMODB_ENDPOINT` in `.env` to its loopback endpoint (port 8000 in
+`DYNAMODB_ENDPOINT` in `.env` to its loopback endpoint (port 8000 in
 `.env.example`):
 
 ```sh
 mise exec -- pnpm test:integration
 ```
 
-Use port 8001 if configured above. These tests create uniquely named temporary
-tables and delete them afterward; they do not use the application table or AWS
+Use port 8001 if configured above. Tests share the local DynamoDB instance with
+the app but create uniquely named temporary tables and delete them afterward;
+they reject nonlocal endpoints and do not use the application table or AWS
 credentials. They verify table setup, reruns, incompatible keys/TTL, document reads/writes,
 player persistence across app instances, conditional profile creation, concurrent
 creation limits, hourly rollover while old TTL records still exist, concurrent
@@ -215,4 +232,26 @@ price expiry before TTL cleanup. Guess coverage verifies concurrent submission
 and resolution across app instances, exactly-once positive/negative scoring,
 observation eligibility, ownership, transaction rollback, and resolved evidence
 expiry before TTL cleanup.
-End-to-end tests remain deferred to task 008.
+For the focused Playwright happy-path test, keep DynamoDB Local running and
+configure its loopback `DYNAMODB_ENDPOINT` in `.env`, then run:
+
+```sh
+mise exec -- pnpm exec playwright install chromium
+mise exec -- pnpm test:e2e
+```
+
+The test starts its own Vite frontend on port 5174 and backend on port 3001;
+leave those ports free. It creates and deletes a unique temporary DynamoDB table
+and uses local placeholder credentials, leaving application data untouched.
+Chromium runs at 1440 × 900. The test creates an anonymous player, submits a
+higher guess, advances test clocks through the 60-second deadline, verifies a correct result and
+score +1, then reloads to confirm identity and score persistence. Only the Coinbase
+price source is controlled to produce increasing prices; browser requests,
+backend rules, caching, transactions, and DynamoDB persistence are real.
+Node's built-in mock clock controls backend dates, and Playwright's clock controls
+browser dates. Network and polling timers remain real. The test confirms pending
+at 59 seconds, then advances to 65 seconds to allow any pre-deadline five-second
+price cache to expire before resolution. Game rules and stored deadlines are unchanged.
+It runs in seconds. Failure traces are saved under ignored `test-results/`.
+Broader error-state and desktop verification remain tracked in task 008; no CI
+or broad browser suite is configured.

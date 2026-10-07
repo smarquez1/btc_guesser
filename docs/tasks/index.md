@@ -10,9 +10,9 @@ Update this index as work progresses; record validation and limitations in each 
 | 003 | done | [Anonymous players](003-anonymous-players.md) |
 | 004 | done | [BTC pricing](004-btc-pricing.md) |
 | 005 | done | [Guess lifecycle](005-guess-lifecycle.md) |
-| 006 | todo | [Game UI](006-game-ui.md) |
-| 007 | todo | [Test coverage review](007-unit-tests.md) |
-| 008 | todo | [End-to-end verification](008-end-to-end-verification.md) |
+| 006 | in-progress | [Game UI](006-game-ui.md) |
+| 007 | done | [Test coverage review](007-unit-tests.md) |
+| 008 | in-progress | [End-to-end verification](008-end-to-end-verification.md) |
 | 009 | todo | [Deployment](009-deployment.md) |
 
 Testing strategy: Most automated coverage belongs in fast unit tests. Keep

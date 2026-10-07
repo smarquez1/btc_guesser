@@ -2,11 +2,11 @@
 
 This is a small interview assignment. Prioritize working end-to-end flow, correctness, readable structure, deployment, then UI polish. Skip optional work that does not improve the critical path.
 
-This challenge targets desktop only. Use the 16:10 mockup as the reference; mobile/tablet layouts and verification are out of scope.
+This challenge targets desktop only. Use the 16:10 mockup as a loose guide for layout and game states; matching its exact styling, spacing, or typography is not required. Prioritize minimal HTML and styling. Mobile/tablet layouts and verification are out of scope.
 
 ## Stack and layout
 
-- Frontend: React, TypeScript, Vite, Tailwind, and shadcn/ui. Code in `src/`, static assets in `public/`.
+- Frontend: React, TypeScript, Vite, and Tailwind CSS with semantic native HTML. Keep markup and styling minimal; use small amounts of plain CSS when useful. Code in `src/`, static assets in `public/`. Keep the existing Tailwind setup. Do not use shadcn/ui or another UI component library.
 - Backend: Fastify, TypeScript, DynamoDB, and Coinbase. Code directly under `server/`.
 - Use pnpm and mise; tool versions live in `.tool-versions`. Keep dependency manifests and applicable lockfiles committed.
 - Read `README.md` for setup, run, and deployment commands; update it when those commands or functionality change.
@@ -22,6 +22,33 @@ Keep the implementation easy to walk through from route to service to repository
 Use routes for HTTP handling, services for business logic, repositories for explicit DynamoDB access, schemas for validation, and lib for small infrastructure helpers. Create folders only when needed. Keep genuinely shared domain types in types. Separate I/O from business logic where practical.
 
 The backend owns validation, timestamps, prices, caching, resolution, and persistence. The frontend renders server state, collects input, and calls APIs. Never trust client-provided game state or timestamps.
+
+## React structure and effects
+
+- Put UI components in `src/components/`; keep `App.tsx` as the screen entrypoint.
+  Put hooks in `src/hooks/` and API/formatting helpers in `src/lib/`. Keep
+  `main.tsx` and `styles.css` at the `src/` root. Use direct imports; avoid barrel
+  exports and add further folders only when needed.
+- Keep screen components focused on composing UI and connecting user actions.
+  Extract meaningful sections and reusable native controls into typed components.
+- Keep presentation components independent of API calls and persistence.
+- Put substantial synchronization in focused hooks named for their purpose,
+  such as `usePrice` and `useGame`. Keep closely coordinated game state together;
+  avoid splitting it across hooks that require multiple coordinating callbacks.
+- Give each effect one synchronization responsibility. Separate independent
+  polling and timers, and make setup and cleanup easy to see.
+- Extract substantial request sequences into named async functions. Prefer
+  async/await and explicit try/catch over nested promise handlers.
+- Keep one authoritative owner for state. Derive values when practical and
+  document refs needed for request coordination.
+- Handle cancellation, stale responses, duplicate actions, and recovery
+  explicitly. Cleanup must stop future polling and prevent obsolete updates.
+- Keep countdown updates local to the UI that displays them; avoid rerendering
+  the whole screen every second. Avoid overlapping polls and redundant requests.
+- Reuse behavior and domain rules where they repeat. Avoid generic hooks,
+  component systems, and layers without a concrete need.
+- Prefer clear branches and small named functions over nested ternaries and
+  dense JSX. Add memoization only for a demonstrated performance need.
 
 ## Formatting and readability
 
@@ -48,14 +75,14 @@ The backend owns validation, timestamps, prices, caching, resolution, and persis
 
 Use anonymous identity with backend validation, cheap player-creation rate limiting, and TTL for ephemeral records. Never commit credentials or local environment files; document placeholders in `.env.example` and ignore secrets and generated output.
 
-Avoid Redux, Zustand, queues, microservices, DI frameworks, generic repositories, custom design systems, and full authentication unless explicitly required. Prefer existing shadcn/ui primitives.
+Avoid Redux, Zustand, queues, microservices, DI frameworks, generic repositories, custom design systems, and full authentication unless explicitly required. Prefer native HTML controls and browser behavior; keep CSS focused on layout, readability, focus, and game-state feedback.
 
 ## Commits and checks
 
 - Follow the workflow: implementation -> user approval -> requested tests -> commit.
   Add tests only when the user asks, after reviewing the implementation.
 
-- Use Lefthook before commits to run Biome on staged files, `pnpm typecheck` (`tsc --noEmit`) on the whole project, all unit and integration tests, and the production build. Integration tests require DynamoDB Local; set `TEST_DYNAMODB_ENDPOINT` when using a port other than 8000.
+- Use Lefthook before commits to run Biome on staged files, `pnpm typecheck` (`tsc --noEmit`) on the whole project, all unit and integration tests, and the production build. Integration tests require DynamoDB Local and use `DYNAMODB_ENDPOINT` from `.env` with isolated temporary tables.
 - Run lint and type checks only before committing or when the user explicitly asks. Do not run formatters unless explicitly asked.
 - Add and run unit tests when the developer asks, before committing the related work. Keep most coverage fast and deterministic; add focused integration tests where real component interactions matter.
 - Defer end-to-end tests to the final verification task. Use Playwright for direct verification of meaningful UI changes. CI remains deferred unless explicitly requested.
@@ -72,7 +99,12 @@ Avoid Redux, Zustand, queues, microservices, DI frameworks, generic repositories
 
 ## Task-specific guidance
 
-The approved UI reference is [docs/ui.pen](docs/ui.pen), containing 16:10 ready and success mockups of one game screen. Inspect it with pen.dev before UI implementation. Keep the UI minimal: black, white, neutral grays, square buttons, and bottom help text. Reserve green/red for the price after a correct/incorrect guess. Show the player name beside the score (Steve is the mockup example). Keep both direction buttons visible, disable them while pending with the selected direction highlighted, and re-enable them after resolution. Show countdowns, results, loading, and errors inline; do not add separate game-state screens or a Try again action.
+The approved UI guide is [docs/ui.pen](docs/ui.pen), containing 16:10 ready and success mockups of one game screen. Inspect it with pen.dev before UI implementation. Treat its visual details as guidelines, not exact implementation requirements; prefer simple semantic HTML and minimal Tailwind styling over reproducing the mockup. Keep the UI minimal: black, white, neutral grays, square buttons, and bottom help text. Reserve green/red for the price after a correct/incorrect guess. Show the server-generated player name beside the score (Steve is only the mockup example). Keep both direction buttons visible, disable them while pending with the selected direction highlighted, and re-enable them after resolution. Show countdowns, results, loading, and errors inline; do not add separate game-state screens or a Try again action.
+
+Direction-button update: use uppercase `GUESS HIGHER` in green and `GUESS LOWER`
+in red. Fill the selected button with its direction color while pending, keeping
+the other outlined. This supersedes the mockup's neutral-button styling and the
+restriction above reserving green/red only for resolved prices.
 
 Read the relevant document before making changes:
 

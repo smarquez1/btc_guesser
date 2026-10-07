@@ -1,12 +1,23 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { loadConfig } from '../server/config.ts';
+import { readFileSync } from 'node:fs';
+import { parseEnv } from 'node:util';
 
 const environment = {
   AWS_REGION: 'us-east-1',
   DYNAMODB_TABLE: 'btc-guess',
   APP_ORIGIN: 'http://127.0.0.1:5173',
 };
+
+test('example browser origin matches the frontend development host', () => {
+  const example = parseEnv(readFileSync(new URL('../.env.example', import.meta.url), 'utf8'));
+  const manifest = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+  const host = manifest.scripts.dev.match(/--host\s+(\S+)/)?.[1];
+
+  assert.equal(host, '127.0.0.1');
+  assert.equal(loadConfig(example).appOrigin, `http://${host}:5173`);
+});
 
 test('minimal AWS configuration uses documented defaults without a custom endpoint', () => {
   assert.deepEqual(loadConfig(environment), {

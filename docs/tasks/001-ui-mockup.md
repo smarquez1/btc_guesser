@@ -8,7 +8,7 @@ Read docs/ui.md and retain the .pen file in the repository.
 - Use one screen for selection, submission, pending/countdown, and resolved results; do not add separate screens or routes for game states.
 - Show loading, unavailable-price, and request errors inline on that screen.
 - Retain 16:10 ready and success mockups of the same desktop screen. Mobile/tablet layouts are out of scope.
-- Keep the design achievable with Tailwind and existing shadcn/ui primitives.
+- Keep the design achievable with semantic native HTML and minimal Tailwind styling.
 
 ## Validation and limitations
 
@@ -21,3 +21,4 @@ Read docs/ui.md and retain the .pen file in the repository.
 - Both buttons are neutral before selection. Highlight the selected direction with a black background and white label/icon while pending; keep the other button outlined.
 - Inspected pen.dev screenshots and checked layout bounds; no clipping reported after adjustments.
 - Prices, scores, and countdowns are illustrative. Browser implementation and Playwright verification belong to the game UI task.
+- Implementation clarification on 2026-10-07: the mockup is a loose guide. Exact visual matching is unnecessary; prioritize minimal HTML and styling, retaining Tailwind. The single-screen flow and required game behavior remain acceptance criteria.

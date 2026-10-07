@@ -1,1 +1,37 @@
 @import "tailwindcss";
+
+:root {
+  font-family: Arial, Helvetica, sans-serif;
+  color: #171717;
+  background: #fff;
+}
+
+body {
+  min-width: 800px;
+}
+
+.direction-button {
+  @apply w-60 cursor-pointer border bg-white p-5 text-sm font-medium;
+  @apply disabled:cursor-default;
+}
+
+.direction-button[data-direction="up"] {
+  @apply border-green-700 text-green-700 enabled:hover:bg-green-50;
+}
+
+.direction-button[data-direction="down"] {
+  @apply border-red-700 text-red-700 enabled:hover:bg-red-50;
+}
+
+.direction-button[data-direction="up"][aria-pressed="true"] {
+  @apply bg-green-700 text-white;
+}
+
+.direction-button[data-direction="down"][aria-pressed="true"] {
+  @apply bg-red-700 text-white;
+}
+
+:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 4px;
+}

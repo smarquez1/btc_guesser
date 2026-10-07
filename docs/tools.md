@@ -15,24 +15,17 @@ Good uses include:
 - DynamoDB
 - React
 - Vite
-- Tailwind
 - third-party package APIs
 
 Prefer current documentation over model memory when behavior may have changed.
 
 Do not use Context7 for code that is already clear from the repository.
 
-## shadcn MCP
+## UI tools
 
-Use shadcn MCP for:
+Use semantic native HTML and minimal Tailwind styling. Retain the existing Tailwind Vite plugin and CSS import. Do not use shadcn MCP or install a UI component library. Remove unused shadcn configuration during task 006.
 
-- discovering relevant components
-- checking component usage
-- adding required shadcn primitives
-
-Do not browse or install large numbers of components unnecessarily.
-
-Use the smallest set required for the UI.
+Inspect the retained mockup with pen.dev as a loose design guide; do not spend time reproducing exact visual details. Playwright installation is authorized for direct browser verification when needed. Keep verification focused on the desktop game flow.
 
 For pen.dev and Playwright workflows, read [ui.md](ui.md).
 

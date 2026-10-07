@@ -14,7 +14,7 @@ import { guessRoutes } from './routes/guesses.ts';
 import { guessService } from './services/guesses.ts';
 import { healthRoutes } from './routes/health.ts';
 
-export function buildApp(config?: Config) {
+export function buildApp(config?: Config, fetchPrice = fetchCoinbasePrice) {
   const app = Fastify({ logger: true });
 
   app.setErrorHandler((error: FastifyError, request, reply) => {
@@ -48,7 +48,7 @@ export function buildApp(config?: Config) {
 
     const prices = priceService(
       priceRepository(documentClient, config.tableName),
-      fetchCoinbasePrice,
+      fetchPrice,
     );
     app.register(priceRoutes, { prices });
 
