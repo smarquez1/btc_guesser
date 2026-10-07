@@ -71,6 +71,12 @@ avoid false recovery during a write outage. Automatic request logs are disabled
 and serializers sanitize fallback errors; deterministic writable-stream tests
 check correlation and seeded-secret omission without a new logging dependency.
 
+Unauthenticated player creation is bounded by a process-local, fixed-window
+per-client-address limiter (default 10 creations/minute) that returns 429
+`too_many_requests`; a valid returning session is never throttled. Production
+trusts the hosting proxy's forwarded client address so the limit keys on the
+real client rather than the proxy. The limit is per instance, not fleet-wide.
+
 ## T003 pricing policies and handoff
 
 Use Coinbase Exchange's unauthenticated BTC-USD ticker GET endpoint:

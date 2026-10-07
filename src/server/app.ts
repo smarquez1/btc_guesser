@@ -36,6 +36,7 @@ export function buildApp({
   staticDir,
   pricingService,
   resolverService,
+  production = false,
   ...players
 }: AppOptions = {}) {
   const app = Fastify({
@@ -57,6 +58,10 @@ export function buildApp({
       : false,
     logController: new LogController({ disableRequestLogging: true }),
     requestIdHeader: false,
+    // Behind the hosting proxy, trust X-Forwarded-For so per-IP limits and logs
+    // see the real client. Only enabled in production, where the proxy is the
+    // sole ingress; development binds to loopback.
+    trustProxy: production,
   });
   app.addHook("onSend", async (_request, reply) => {
     reply.header("X-Content-Type-Options", "nosniff");
@@ -85,7 +90,7 @@ export function buildApp({
       await pricing.close();
     });
   }
-  app.register(playerRoutes, players);
+  app.register(playerRoutes, { ...players, production });
 
   app.get("/api/health", async () => ({ status: "ok" }));
 

@@ -53,6 +53,7 @@ export type DiagnosticCategory =
   | "conflict"
   | "provider"
   | "storage"
+  | "rate_limit"
   | "network"
   | "unknown";
 
@@ -64,6 +65,7 @@ export type ApiErrorCode =
   | "active_guess"
   | "price_unavailable"
   | "persistence_unavailable"
+  | "too_many_requests"
   | "payload_too_large"
   | "unsupported_media_type"
   | "invalid_request"

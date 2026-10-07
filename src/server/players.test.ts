@@ -430,6 +430,58 @@ describe("player API", () => {
     });
     expect(repeat.json()).toEqual(accepted?.json());
   });
+  it("throttles new-player creation per client address without counting returning sessions", async () => {
+    const { store } = memoryStore();
+    const app = setup({
+      store,
+      creationLimit: { limit: 2, windowMs: 60_000 },
+    });
+    const createFrom = (remoteAddress: string) =>
+      app.inject({
+        method: "POST",
+        url: "/api/players",
+        remoteAddress,
+        payload: { displayName: "Ada" },
+      });
+    const first = await createFrom("198.51.100.7");
+    expect(first.statusCode).toBe(201);
+    expect((await createFrom("198.51.100.7")).statusCode).toBe(201);
+    const throttled = await createFrom("198.51.100.7");
+    expect(throttled.statusCode).toBe(429);
+    expect(throttled.json()).toEqual({ error: "too_many_requests" });
+    expect(throttled.headers["retry-after"]).toBe("60");
+    // A different client address has its own budget.
+    expect((await createFrom("198.51.100.8")).statusCode).toBe(201);
+    // A returning session is served from its cookie and never throttled.
+    const returning = await app.inject({
+      method: "POST",
+      url: "/api/players",
+      remoteAddress: "198.51.100.7",
+      cookies: { btc_player: first.cookies[0].value },
+      payload: { displayName: "Ada" },
+    });
+    expect(returning.statusCode).toBe(200);
+  });
+  it("re-allows creation once the rate-limit window elapses", async () => {
+    const { store } = memoryStore();
+    let clock = 0;
+    const app = setup({
+      store,
+      now: () => clock,
+      creationLimit: { limit: 1, windowMs: 1_000 },
+    });
+    const createFrom = () =>
+      app.inject({
+        method: "POST",
+        url: "/api/players",
+        remoteAddress: "203.0.113.9",
+        payload: { displayName: "Ada" },
+      });
+    expect((await createFrom()).statusCode).toBe(201);
+    expect((await createFrom()).statusCode).toBe(429);
+    clock = 1_000;
+    expect((await createFrom()).statusCode).toBe(201);
+  });
   it("reports persistence configuration and infrastructure failures without masking them as conflicts or leaking errors", async () => {
     expect(
       (

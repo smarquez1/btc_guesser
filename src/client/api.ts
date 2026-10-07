@@ -26,6 +26,7 @@ const SESSION_CODES = new Set<ApiErrorCode>(["unauthorized"]);
 const CONFLICT_CODES = new Set<ApiErrorCode>(["active_guess"]);
 const PROVIDER_CODES = new Set<ApiErrorCode>(["price_unavailable"]);
 const STORAGE_CODES = new Set<ApiErrorCode>(["persistence_unavailable"]);
+const RATE_LIMIT_CODES = new Set<ApiErrorCode>(["too_many_requests"]);
 const NETWORK_CODES = new Set<ApiErrorCode>(["network"]);
 
 /** Every error code the backend is documented to return. */
@@ -35,6 +36,7 @@ const KNOWN_ERROR_CODES = new Set<ApiErrorCode>([
   ...CONFLICT_CODES,
   ...PROVIDER_CODES,
   ...STORAGE_CODES,
+  ...RATE_LIMIT_CODES,
   ...NETWORK_CODES,
   "unknown",
 ]);
@@ -49,6 +51,7 @@ export function categoryForCode(
   if (CONFLICT_CODES.has(code)) return "conflict";
   if (PROVIDER_CODES.has(code)) return "provider";
   if (STORAGE_CODES.has(code)) return "storage";
+  if (RATE_LIMIT_CODES.has(code)) return "rate_limit";
   if (NETWORK_CODES.has(code)) return "network";
   return "unknown";
 }
@@ -72,6 +75,7 @@ export function isRetryableCode(
   if (
     PROVIDER_CODES.has(code) ||
     STORAGE_CODES.has(code) ||
+    RATE_LIMIT_CODES.has(code) ||
     NETWORK_CODES.has(code)
   ) {
     return true;

@@ -7,6 +7,11 @@ import {
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { playerDiagnostics } from "./player-diagnostics.js";
 import type { DisplayPricing, PriceObservation } from "./pricing.js";
+import {
+  createRateLimiter,
+  playerCreationPolicy,
+  type RateLimitPolicy,
+} from "./rate-limit.js";
 
 export interface PendingGuess {
   id: string;
@@ -54,6 +59,8 @@ export interface PlayerOptions {
   // T003 owns freshness/validation; null means no fresh trusted observation.
   price?: () => Promise<PriceObservation | null>;
   displayPricing?: () => DisplayPricing;
+  // Bounds unauthenticated player creation; overridable for tests.
+  creationLimit?: RateLimitPolicy;
 }
 export function digestToken(token: string) {
   return createHash("sha256").update(token).digest("hex");
@@ -146,7 +153,9 @@ export async function playerRoutes(
     token = () => randomBytes(32).toString("hex"),
     price = async () => null,
     displayPricing = () => ({ status: "unavailable", observation: null }),
+    creationLimit = playerCreationPolicy,
   } = options;
+  const creationLimiter = createRateLimiter(creationLimit, now);
   const state = (player: PlayerRecord) => ({
     ...publicPlayer(player),
     pricing: displayPricing(),
@@ -216,6 +225,12 @@ export async function playerRoutes(
     if (!store) return reply.code(503).send(unavailableStorage(request));
     const existing = await authenticate(request);
     if (existing) return reply.code(200).send(state(existing));
+    // Only a genuine new-player creation consumes the budget; a returning
+    // session is never throttled. This bounds unauthenticated write amplification.
+    if (!creationLimiter.allow(request.ip)) {
+      reply.header("Retry-After", String(creationLimiter.retryAfterSeconds()));
+      return reply.code(429).send({ error: "too_many_requests" });
+    }
     const credential = token();
     const player: PlayerRecord = {
       playerId: id(),

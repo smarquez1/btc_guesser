@@ -86,6 +86,8 @@ const actionErrorMessages: Record<ApiErrorCode, string> = {
   price_unavailable: "No fresh price right now — try again shortly.",
   persistence_unavailable:
     "The server couldn't save right now. Try again shortly.",
+  too_many_requests:
+    "Too many new games from this device. Wait a moment, then try again.",
   payload_too_large: "That request wasn't accepted. Try again.",
   unsupported_media_type: "That request wasn't accepted. Try again.",
   invalid_request: "That request wasn't accepted. Try again.",

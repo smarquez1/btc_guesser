@@ -96,10 +96,17 @@ submissions cannot overwrite an active guess. Unavailable prices write no guess.
 
 Errors are JSON `{"error":"code"}`: 400 `invalid_display_name`,
 `invalid_direction`, or `invalid_body`; 401 `unauthorized`; 409 `active_guess`;
-413 `payload_too_large`; 415 `unsupported_media_type`; other framework client
+413 `payload_too_large`; 415 `unsupported_media_type`; 429 `too_many_requests`
+(with a `Retry-After` header); other framework client
 errors retain their status with `invalid_request`; 503 `price_unavailable` or
 `persistence_unavailable`. Database failures are not
 reported as conflicts and private credentials never appear in JSON.
+
+New-player creation is bounded per client address (default 10 creations per
+minute, fixed window) so the unauthenticated endpoint cannot be used for free
+write amplification; a returning valid session is served without consuming that
+budget. The limiter is process-local: with more than one app instance each holds
+its own window, and a shared store would be needed for a fleet-wide limit.
 
 Player diagnostics log only fixed event/category/operation fields and server-issued
 request IDs. Unexpected storage/request failures use error level; missing config
