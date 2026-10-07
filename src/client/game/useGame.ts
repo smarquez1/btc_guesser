@@ -39,6 +39,7 @@ import {
   type ApiError,
   type Direction,
   type GameController,
+  type PlayerState,
   validateDisplayName,
 } from "@/game/types";
 
@@ -123,18 +124,44 @@ export function useGame(): GameController {
     apply();
   }, []);
 
+  // Single player-fetch lifecycle shared by session checks, refreshes, guess
+  // reconciliation, and polling. An abort is silent (no report, no state
+  // write); a real failure is always reported, then optionally applied.
+  const fetchPlayer = useCallback(
+    async ({
+      operation,
+      onSuccess,
+      onFailure,
+    }: {
+      operation: DiagnosticEvent["operation"];
+      onSuccess: (player: PlayerState) => void;
+      onFailure?: (apiError: ApiError) => void;
+    }) => {
+      const sequence = nextSequence();
+      const controller = beginRequest();
+      try {
+        const player = await getPlayer(controller.signal);
+        applyIfNewest(sequence, () => onSuccess(player));
+      } catch (error) {
+        if (isAbortError(error)) return;
+        const apiError = toApiError(error);
+        report(apiError, operation);
+        if (onFailure) {
+          applyIfNewest(sequence, () => onFailure(apiError));
+        }
+      } finally {
+        endRequest(controller);
+      }
+    },
+    [applyIfNewest, beginRequest, endRequest, nextSequence, report],
+  );
+
   const runSessionCheck = useCallback(async () => {
     send({ type: "session/start" });
-    const sequence = nextSequence();
-    const controller = beginRequest();
-    try {
-      const player = await getPlayer(controller.signal);
-      applyIfNewest(sequence, () => send({ type: "session/ready", player }));
-    } catch (error) {
-      if (isAbortError(error)) return;
-      const apiError = toApiError(error);
-      report(apiError, "session");
-      applyIfNewest(sequence, () => {
+    await fetchPlayer({
+      operation: "session",
+      onSuccess: (player) => send({ type: "session/ready", player }),
+      onFailure: (apiError) => {
         // Only a confirmed unauthorized response means "new player". Every
         // other failure is recoverable and must not erase a known session.
         if (apiError.code === "unauthorized") {
@@ -142,50 +169,30 @@ export function useGame(): GameController {
         } else {
           send({ type: "session/failed", error: apiError });
         }
-      });
-    } finally {
-      endRequest(controller);
-    }
-  }, [applyIfNewest, beginRequest, endRequest, nextSequence, report, send]);
+      },
+    });
+  }, [fetchPlayer, send]);
 
   const refresh = useCallback(async () => {
-    const sequence = nextSequence();
-    const controller = beginRequest();
-    try {
-      const player = await getPlayer(controller.signal);
-      applyIfNewest(sequence, () => send({ type: "session/ready", player }));
-    } catch (error) {
-      if (isAbortError(error)) return;
-      const apiError = toApiError(error);
-      report(apiError, "refresh");
-      applyIfNewest(sequence, () =>
+    await fetchPlayer({
+      operation: "refresh",
+      onSuccess: (player) => send({ type: "session/ready", player }),
+      onFailure: (apiError) =>
         send({ type: "session/failed", error: apiError }),
-      );
-    } finally {
-      endRequest(controller);
-    }
-  }, [applyIfNewest, beginRequest, endRequest, nextSequence, report, send]);
+    });
+  }, [fetchPlayer, send]);
 
   // Reconcile a lost/conflicting mutation against the server. Success replaces
   // local state; failure keeps submissions blocked and surfaces the cause.
   const reconcileGuess = useCallback(
     async (cause: ApiError) => {
-      const sequence = nextSequence();
-      const controller = beginRequest();
-      try {
-        const player = await getPlayer(controller.signal);
-        applyIfNewest(sequence, () => send({ type: "guess/result", player }));
-      } catch (error) {
-        if (isAbortError(error)) return;
-        report(toApiError(error), "refresh");
-        applyIfNewest(sequence, () =>
-          send({ type: "guess/reconciling", error: cause }),
-        );
-      } finally {
-        endRequest(controller);
-      }
+      await fetchPlayer({
+        operation: "refresh",
+        onSuccess: (player) => send({ type: "guess/result", player }),
+        onFailure: () => send({ type: "guess/reconciling", error: cause }),
+      });
     },
-    [applyIfNewest, beginRequest, endRequest, nextSequence, report, send],
+    [fetchPlayer, send],
   );
 
   const createPlayer = useCallback(
@@ -333,19 +340,15 @@ export function useGame(): GameController {
         return;
       }
       pollInFlightRef.current = true;
-      const sequence = nextSequence();
-      const controller = beginRequest();
       try {
-        const player = await getPlayer(controller.signal);
-        applyIfNewest(sequence, () => send({ type: "session/ready", player }));
-      } catch (error) {
-        if (!isAbortError(error)) {
-          // Bounded diagnostic; keep the previous state and retry on cadence.
-          report(toApiError(error), "refresh");
-        }
+        // On failure `fetchPlayer` reports and keeps the previous state; the
+        // next tick is scheduled on cadence.
+        await fetchPlayer({
+          operation: "refresh",
+          onSuccess: (player) => send({ type: "session/ready", player }),
+        });
       } finally {
         pollInFlightRef.current = false;
-        endRequest(controller);
         if (!cancelled && mountedRef.current) {
           schedule(pollDelayMs(stateRef.current));
         }
@@ -359,16 +362,7 @@ export function useGame(): GameController {
       cancelled = true;
       if (timer !== undefined) clearTimeout(timer);
     };
-  }, [
-    activeGuessId,
-    applyIfNewest,
-    beginRequest,
-    endRequest,
-    nextSequence,
-    polling,
-    report,
-    send,
-  ]);
+  }, [activeGuessId, fetchPlayer, polling, send]);
 
   // Countdown display aid only: ticks while a guess is pending, never resolves
   // and never touches score or submission gating.
