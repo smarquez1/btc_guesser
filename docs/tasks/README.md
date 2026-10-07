@@ -4,11 +4,11 @@ This is the plain-text task index. Each linked file is a self-contained prompt t
 
 ## Must do — Ready
 
-- [ ] [T007 — Deploy and document the demo](T007-deploy-and-readme.md)
+None.
 
 ## Must do — In progress
 
-None.
+- [ ] [T007 — Deploy and document the demo](T007-deploy-and-readme.md)
 
 ## Must do — Done
 
