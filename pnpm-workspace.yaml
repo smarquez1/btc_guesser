@@ -1,0 +1,6 @@
+allowBuilds:
+  esbuild: true
+  lefthook: false
+minimumReleaseAgeExclude:
+  - '@aws-sdk/client-dynamodb@3.1147.0'
+  - '@aws-sdk/lib-dynamodb@3.1147.0'

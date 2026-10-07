@@ -1,0 +1,12 @@
+# Copy these entries into .codex/config.toml to enable project-scoped MCPs.
+[mcp_servers.shadcn]
+command = "mise"
+args = ["exec", "--", "pnpm", "dlx", "shadcn@latest", "mcp"]
+startup_timeout_sec = 60
+
+[mcp_servers.aws]
+command = "awslabs.aws-api-mcp-server"
+startup_timeout_sec = 120
+
+[mcp_servers.aws.env]
+READ_OPERATIONS_ONLY = "true"
