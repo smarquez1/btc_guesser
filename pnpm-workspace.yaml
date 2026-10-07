@@ -3,5 +3,3 @@ allowBuilds:
   lefthook@2.1.17: true
 overrides:
   concurrently>shell-quote: 1.11.0
-minimumReleaseAgeExclude:
-  - '@radix-ui/react-slot@1.4.0'
