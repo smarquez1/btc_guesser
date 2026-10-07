@@ -180,6 +180,24 @@ describe("createResolver", () => {
     await resolver.close();
   });
 
+  it("leaves a due guess pending when the trusted observation is stale", async () => {
+    const f = fixture();
+    const pending = guess();
+    vi.mocked(f.store.due).mockResolvedValue([dueGuess(pending)]);
+    const resolver = createResolver({
+      store: f.store,
+      // The receipt is 60s old at decision time, beyond the 15s freshness bound.
+      trusted: async () => observation("101", pending.eligibleAt),
+      now: () => pending.eligibleAt + 60_000,
+      log: f.log,
+      runId: () => "run-1",
+    });
+    await resolver.sweep();
+    expect(f.store.resolve).not.toHaveBeenCalled();
+    expect(f.entries.filter((entry) => entry.level === "error")).toEqual([]);
+    await resolver.close();
+  });
+
   it("classifies obsolete-guess conflicts as expected and rate-limits aggregation", async () => {
     const f = fixture();
     const pending = guess();
@@ -188,7 +206,7 @@ describe("createResolver", () => {
     const clock = { value: pending.eligibleAt };
     const resolver = createResolver({
       store: f.store,
-      trusted: async () => observation("101", pending.eligibleAt),
+      trusted: async () => observation("101", clock.value),
       now: () => clock.value,
       log: f.log,
       runId: () => "run-1",

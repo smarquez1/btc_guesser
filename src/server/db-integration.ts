@@ -172,7 +172,7 @@ try {
     // Injected observation and clock: no live provider, no real-minute wait.
     trusted: async () => ({
       price: "1.000000002",
-      providerTradeAt: "2026-10-06T00:00:00Z",
+      providerTradeAt: new Date(61000).toISOString(),
       receivedAt: 61000,
     }),
     now: () => 61000,

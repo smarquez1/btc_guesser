@@ -14,7 +14,7 @@ const guess: PendingGuess = {
 const observation = (
   price: string,
   receivedAt: number,
-  providerTradeAt = "2026-10-06T00:00:00Z",
+  providerTradeAt = new Date(receivedAt).toISOString(),
 ): PriceObservation => ({ price, providerTradeAt, receivedAt });
 
 describe("resolveGuess", () => {
@@ -81,6 +81,52 @@ describe("resolveGuess", () => {
         eligibleAt,
       ),
     ).toMatchObject({ result: "correct", scoreDelta: 1 });
+  });
+
+  it("resolves a differing observation whose receipt age is exactly 15 seconds", () => {
+    const now = eligibleAt + 30_000;
+    expect(
+      resolveGuess(guess, observation("64123.4561", now - 15_000), now),
+    ).toMatchObject({ result: "correct", scoreDelta: 1 });
+  });
+
+  it("keeps a differing observation with a 15,001ms receipt age pending", () => {
+    const now = eligibleAt + 30_000;
+    expect(
+      resolveGuess(guess, observation("64123.4561", now - 15_001), now),
+    ).toBeNull();
+  });
+
+  it("keeps a differing observation whose trade is older than 120 seconds pending", () => {
+    const now = eligibleAt + 200_000;
+    expect(
+      resolveGuess(
+        guess,
+        observation("64123.4561", now, new Date(now - 120_001).toISOString()),
+        now,
+      ),
+    ).toBeNull();
+  });
+
+  it("keeps a differing observation whose trade is more than 5 seconds in the future pending", () => {
+    const now = eligibleAt;
+    expect(
+      resolveGuess(
+        guess,
+        observation("64123.4561", now, new Date(now + 5_001).toISOString()),
+        now,
+      ),
+    ).toBeNull();
+  });
+
+  it("resolves a fresh post-deadline differing observation for both directions", () => {
+    const now = eligibleAt + 1;
+    expect(
+      resolveGuess(guess, observation("64123.457", now), now),
+    ).toMatchObject({ result: "correct", scoreDelta: 1 });
+    expect(
+      resolveGuess(guess, observation("64123.455", now), now),
+    ).toMatchObject({ result: "incorrect", scoreDelta: -1 });
   });
 
   it("scores each direction and result honestly", () => {

@@ -1,15 +1,19 @@
 import type { GuessResolution, PendingGuess } from "./players.js";
-import { comparePrices, type PriceObservation } from "./pricing.js";
+import { comparePrices, isFresh, type PriceObservation } from "./pricing.js";
 
 // Pure guess resolution: no clock, provider, or storage access.
-// The provider trade timestamp is market-data context; only the server
-// acceptance deadline and the observation's receipt time gate eligibility.
+// The provider trade timestamp is market-data context; eligibility requires the
+// server acceptance deadline, a post-deadline receipt, and decision-time freshness.
 export function resolveGuess(
   guess: PendingGuess,
   observation: PriceObservation,
   now: number,
 ): GuessResolution | null {
-  if (now < guess.eligibleAt || observation.receivedAt < guess.eligibleAt)
+  if (
+    now < guess.eligibleAt ||
+    observation.receivedAt < guess.eligibleAt ||
+    !isFresh(observation, now)
+  )
     return null;
   const comparison = comparePrices(observation.price, guess.startingPrice);
   if (comparison === 0) return null;
