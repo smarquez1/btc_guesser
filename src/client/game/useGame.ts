@@ -98,9 +98,9 @@ export function useGame(): GameController {
     setActionError(null);
   }, []);
 
-  // One player-fetch lifecycle shared by the session check, refresh, reconcile,
+  // One player-load lifecycle shared by the session check, refresh, reconcile,
   // and poll. A newer request makes an older settled response a no-op.
-  const fetchPlayer = useCallback(
+  const loadPlayer = useCallback(
     async (handlers: {
       onSuccess?: (next: PlayerState) => void;
       onFailure?: (error: ApiError) => void;
@@ -128,7 +128,7 @@ export function useGame(): GameController {
 
   const runSessionCheck = useCallback(async () => {
     setSessionStatus("checking");
-    await fetchPlayer({
+    await loadPlayer({
       onSuccess: applyPlayer,
       onFailure: (error) => {
         // Only a confirmed unauthorized response means "new player". Any other
@@ -149,32 +149,22 @@ export function useGame(): GameController {
         }
       },
     });
-  }, [applyPlayer, fetchPlayer]);
+  }, [applyPlayer, loadPlayer]);
 
   const refresh = useCallback(() => {
-    void fetchPlayer({ onSuccess: applyPlayer, onFailure: setSessionError });
-  }, [applyPlayer, fetchPlayer]);
+    void loadPlayer({ onSuccess: applyPlayer, onFailure: setSessionError });
+  }, [applyPlayer, loadPlayer]);
 
   // Reconcile an ambiguous mutation. A failed reconcile keeps submissions
   // blocked and surfaces the cause; a later authoritative poll unblocks.
   const reconcile = useCallback(
     async (cause: ApiError) => {
-      const id = ++sequence.current;
-      const controller = beginRequest();
-      try {
-        const next = await getPlayer(controller.signal);
-        if (mounted.current && id > applied.current) {
-          applied.current = id;
-          applyPlayer(next);
-        }
-      } catch (error) {
-        if (isAbortError(error) || !mounted.current) return;
-        setActionError(cause);
-      } finally {
-        endRequest(controller);
-      }
+      await loadPlayer({
+        onSuccess: applyPlayer,
+        onFailure: () => setActionError(cause),
+      });
     },
-    [applyPlayer, beginRequest, endRequest],
+    [applyPlayer, loadPlayer],
   );
 
   const createPlayer = useCallback(
@@ -219,13 +209,17 @@ export function useGame(): GameController {
       statusRef.current === "ready" &&
       current !== null &&
       current.activeGuess === null &&
-      !submittingRef.current
+      !submittingRef.current &&
+      !mutationInFlight.current
     );
   }, []);
 
   const submitGuess = useCallback(
     (direction: Direction) => {
       if (!canSubmit()) return;
+      // Flip the guard synchronously: `setSubmitting` alone is async, so a
+      // second call in the same tick would otherwise still pass `canSubmit`.
+      submittingRef.current = true;
       setSubmitting(true);
       setPendingDirection(direction);
       setActionError(null);
@@ -305,7 +299,7 @@ export function useGame(): GameController {
         return;
       }
       // On failure the previous state is kept; the next tick is on cadence.
-      await fetchPlayer({ onSuccess: applyPlayer });
+      await loadPlayer({ onSuccess: applyPlayer });
       if (!cancelled && mounted.current) {
         schedule(
           playerRef.current?.activeGuess ? ACTIVE_GUESS_POLL_MS : IDLE_POLL_MS,
@@ -318,7 +312,7 @@ export function useGame(): GameController {
       cancelled = true;
       if (timer !== undefined) clearTimeout(timer);
     };
-  }, [activeGuessId, applyPlayer, fetchPlayer, polling]);
+  }, [activeGuessId, applyPlayer, loadPlayer, polling]);
 
   // Countdown display aid only: ticks while a guess is pending, never resolves
   // and never touches score or submission gating.

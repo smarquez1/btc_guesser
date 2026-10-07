@@ -82,7 +82,7 @@ const actionErrorMessages: Record<string, string> = {
   persistence_unavailable:
     "The server couldn't save right now. Try again shortly.",
   too_many_requests:
-    "Too many new games from this device. Wait a moment, then try again.",
+    "The game is busy right now. Wait a moment, then try again.",
   payload_too_large: "That request wasn't accepted. Try again.",
   unsupported_media_type: "That request wasn't accepted. Try again.",
   invalid_request: "That request wasn't accepted. Try again.",
