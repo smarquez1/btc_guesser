@@ -2,7 +2,6 @@ import { type ChangeEvent, type FormEvent, useId, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { ApiError } from "@/game/types";
-import { validateDisplayName } from "@/game/types";
 import { actionErrorMessage, copy } from "./copy";
 import { Notice } from "./Notice";
 
@@ -14,10 +13,9 @@ interface OnboardingFormProps {
 }
 
 /**
- * Display-name onboarding. Validates locally with the shared rule, also
- * surfaces the server's invalid_display_name rejection inline, and blocks
- * repeat submission while creation is in flight. Other failures (network,
- * server, persistence) show in a separate dismissible notice.
+ * Display-name onboarding. The backend validates the name; this form submits the
+ * raw input and surfaces the server's invalid_display_name rejection inline.
+ * Other failures (network, server, persistence) show in a dismissible notice.
  */
 export function OnboardingForm({
   creating,
@@ -26,21 +24,16 @@ export function OnboardingForm({
   onDismissError,
 }: OnboardingFormProps) {
   const [value, setValue] = useState("");
-  const [localError, setLocalError] = useState<string | null>(null);
   const inputId = useId();
   const hintId = `${inputId}-hint`;
   const errorId = `${inputId}-error`;
 
   const serverRejectedName = actionError?.code === "invalid_display_name";
-  const fieldError =
-    localError ?? (serverRejectedName ? copy.onboarding.serverRejected : null);
+  const fieldError = serverRejectedName ? copy.onboarding.serverRejected : null;
   const otherError = actionError && !serverRejectedName ? actionError : null;
 
   function handleChange(event: ChangeEvent<HTMLInputElement>) {
     setValue(event.target.value);
-    if (localError) {
-      setLocalError(null);
-    }
     if (serverRejectedName) {
       onDismissError();
     }
@@ -51,12 +44,7 @@ export function OnboardingForm({
     if (creating) {
       return;
     }
-    const code = validateDisplayName(value);
-    if (code) {
-      setLocalError(copy.onboarding.displayNameErrors[code]);
-      return;
-    }
-    onSubmit(value.trim());
+    onSubmit(value);
   }
 
   return (

@@ -1,10 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   ApiRequestError,
-  categoryForCode,
   createPlayer,
   getPlayer,
-  isRetryableCode,
   submitGuess,
   toApiError,
 } from "./api";
@@ -131,67 +129,14 @@ describe("api client", () => {
     expect((error as ApiRequestError).requestId).toBeNull();
   });
 
-  it("maps each documented error code to category, status, and retryability", async () => {
-    const cases: Array<{
-      code: string;
-      status: number;
-      category: string;
-      retryable: boolean;
-    }> = [
-      {
-        code: "invalid_display_name",
-        status: 400,
-        category: "validation",
-        retryable: false,
-      },
-      {
-        code: "invalid_direction",
-        status: 400,
-        category: "validation",
-        retryable: false,
-      },
-      {
-        code: "invalid_body",
-        status: 400,
-        category: "validation",
-        retryable: false,
-      },
-      {
-        code: "payload_too_large",
-        status: 413,
-        category: "validation",
-        retryable: false,
-      },
-      {
-        code: "unsupported_media_type",
-        status: 415,
-        category: "validation",
-        retryable: false,
-      },
-      {
-        code: "unauthorized",
-        status: 401,
-        category: "session",
-        retryable: false,
-      },
-      {
-        code: "active_guess",
-        status: 409,
-        category: "conflict",
-        retryable: false,
-      },
-      {
-        code: "price_unavailable",
-        status: 503,
-        category: "provider",
-        retryable: true,
-      },
-      {
-        code: "persistence_unavailable",
-        status: 503,
-        category: "storage",
-        retryable: true,
-      },
+  it("reports the backend error code and status verbatim", async () => {
+    const cases = [
+      { code: "invalid_display_name", status: 400 },
+      { code: "unauthorized", status: 401 },
+      { code: "active_guess", status: 409 },
+      { code: "price_unavailable", status: 503 },
+      { code: "persistence_unavailable", status: 503 },
+      { code: "too_many_requests", status: 429 },
     ];
 
     for (const testCase of cases) {
@@ -204,18 +149,12 @@ describe("api client", () => {
       )) as ApiRequestError;
       expect(error).toBeInstanceOf(ApiRequestError);
       expect(error.code).toBe(testCase.code);
-      expect(error.category).toBe(testCase.category);
       expect(error.status).toBe(testCase.status);
-      expect(error.retryable).toBe(testCase.retryable);
-      expect(categoryForCode(error.code, error.status)).toBe(testCase.category);
-      expect(isRetryableCode(error.code, error.status)).toBe(
-        testCase.retryable,
-      );
       vi.unstubAllGlobals();
     }
   });
 
-  it("classifies unrecognized 4xx and 5xx bodies without crashing", async () => {
+  it("passes the backend error string through and falls back for bodies without one", async () => {
     installFetch();
     fetchMock.mockResolvedValueOnce(
       jsonResponse(
@@ -227,21 +166,19 @@ describe("api client", () => {
       (thrown: unknown) => thrown,
     )) as ApiRequestError;
     expect(notFound).toBeInstanceOf(ApiRequestError);
-    expect(notFound.code).toBe("unknown");
+    expect(notFound.code).toBe("Not Found");
     expect(notFound.status).toBe(404);
-    expect(notFound.category).toBe("unknown");
-    expect(notFound.retryable).toBe(false);
 
-    fetchMock.mockResolvedValueOnce(jsonResponse({ error: "boom" }, 500));
+    // A body without a string `error` falls back to a coarse code.
+    fetchMock.mockResolvedValueOnce(jsonResponse({ boom: true }, 500));
     const server = (await getPlayer().catch(
       (thrown: unknown) => thrown,
     )) as ApiRequestError;
     expect(server.code).toBe("unknown");
     expect(server.status).toBe(500);
-    expect(server.retryable).toBe(true);
   });
 
-  it("treats a network rejection as a retryable network error", async () => {
+  it("treats a network rejection as a network error", async () => {
     installFetch();
     fetchMock.mockImplementation(() =>
       Promise.reject(new TypeError("fetch failed")),
@@ -253,15 +190,11 @@ describe("api client", () => {
     expect(error).toBeInstanceOf(ApiRequestError);
     expect(error.code).toBe("network");
     expect(error.status).toBeNull();
-    expect(error.category).toBe("network");
     expect(error.requestId).toBeNull();
-    expect(error.retryable).toBe(true);
     expect(toApiError(error)).toEqual({
       code: "network",
       status: null,
-      category: "network",
       requestId: null,
-      retryable: true,
     });
   });
 
@@ -279,7 +212,7 @@ describe("api client", () => {
     await expect(submitGuess("up")).rejects.toBe(namedError);
   });
 
-  it("classifies malformed ok responses as retryable unknown errors", async () => {
+  it("classifies malformed ok responses as unknown errors", async () => {
     installFetch();
     fetchMock.mockResolvedValue(
       new Response("not json", {
@@ -291,15 +224,12 @@ describe("api client", () => {
       (thrown: unknown) => thrown,
     )) as ApiRequestError;
     expect(unparseable.code).toBe("unknown");
-    expect(unparseable.category).toBe("unknown");
-    expect(unparseable.retryable).toBe(true);
 
     fetchMock.mockResolvedValue(jsonResponse(null, 200));
     const wrongShape = (await getPlayer().catch(
       (thrown: unknown) => thrown,
     )) as ApiRequestError;
     expect(wrongShape.code).toBe("unknown");
-    expect(wrongShape.retryable).toBe(true);
   });
 
   it("never reads document.cookie", async () => {
@@ -322,13 +252,11 @@ describe("api client", () => {
     expect(cookieReads).toBe(0);
   });
 
-  it("converts unknown thrown values to a non-retryable unknown error", () => {
+  it("converts unknown thrown values to an unknown error", () => {
     expect(toApiError(new Error("nope"))).toEqual({
       code: "unknown",
       status: null,
-      category: "unknown",
       requestId: null,
-      retryable: false,
     });
   });
 });

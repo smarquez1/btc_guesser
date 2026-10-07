@@ -1,50 +1,29 @@
 // Session + guess orchestration for the game interface.
 //
-// Everything here is transport and timing; the state decisions live in the pure
-// reducer (`./machine`). This hook never reads cookies/storage, never compares
-// prices, and never applies score changes locally: mutations are always
+// Plain React state and effects: no reducer, no state library. This hook does
+// four things — call the backend, hold the last authoritative player, poll for
+// resolution, and expose retry/dismiss actions. It never compares prices, never
+// applies score changes locally, and never decides outcomes: mutations are always
 // reconciled against the authoritative player returned by `@/api`.
 
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useReducer,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   getPlayer,
   createPlayer as requestCreatePlayer,
   submitGuess as requestSubmitGuess,
   toApiError,
 } from "@/api";
-import {
-  createDiagnostics,
-  type DiagnosticEvent,
-  reportableError,
-} from "@/diagnostics";
-import {
-  ACTIVE_GUESS_POLL_MS,
-  canSubmitGuess,
-  type GameAction,
-  type GameState,
-  gameReducer,
-  IDLE_POLL_MS,
-  initialGameState,
-  pollDelayMs,
-  shouldPoll,
-} from "@/game/machine";
-import {
-  type ApiError,
-  type Direction,
-  type GameController,
-  type PlayerState,
-  validateDisplayName,
+import type {
+  ApiError,
+  Direction,
+  GameController,
+  PlayerState,
+  SessionStatus,
 } from "@/game/types";
 
-const IS_DEV = import.meta.env?.DEV === true;
-const COUNTDOWN_TICK_MS = 1000;
+const ACTIVE_GUESS_POLL_MS = 5_000;
+const IDLE_POLL_MS = 15_000;
+const COUNTDOWN_TICK_MS = 1_000;
 
 function isAbortError(error: unknown): boolean {
   return (
@@ -55,233 +34,241 @@ function isAbortError(error: unknown): boolean {
   );
 }
 
-/**
- * A client-side validation failure. The message is not carried on `ApiError`:
- * the UI derives the exact copy from `validateDisplayName` and the code.
- */
-function invalidDisplayNameError(): ApiError {
-  return {
-    code: "invalid_display_name",
-    status: null,
-    category: "validation",
-    requestId: null,
-    retryable: false,
-  };
+/** An ambiguous failure: the request may or may not have reached the server. */
+function isUncertain(error: ApiError): boolean {
+  return error.status === null || error.status >= 500;
 }
 
 export function useGame(): GameController {
-  const [state, dispatch] = useReducer(gameReducer, initialGameState);
-  const [now, setNow] = useState(() => Date.now());
-
-  // Mirror state synchronously so guards and delay decisions read the latest
-  // value even before React commits the corresponding render.
-  const stateRef = useRef<GameState>(initialGameState);
-  const send = useCallback((action: GameAction) => {
-    stateRef.current = gameReducer(stateRef.current, action);
-    dispatch(action);
-  }, []);
-
-  const mountedRef = useRef(true);
-  const sequenceRef = useRef(0);
-  const appliedSequenceRef = useRef(0);
-  const controllersRef = useRef<Set<AbortController>>(new Set());
-  const pollInFlightRef = useRef(false);
-  const mutationInFlightRef = useRef(false);
-
-  const diagnosticsRef = useRef<ReturnType<typeof createDiagnostics> | null>(
+  const [sessionStatus, setSessionStatus] = useState<SessionStatus>("checking");
+  const [player, setPlayer] = useState<PlayerState | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [pendingDirection, setPendingDirection] = useState<Direction | null>(
     null,
   );
-  diagnosticsRef.current ??= createDiagnostics({ enabled: IS_DEV });
-  const diagnostics = diagnosticsRef.current;
+  const [sessionError, setSessionError] = useState<ApiError | null>(null);
+  const [actionError, setActionError] = useState<ApiError | null>(null);
+  const [now, setNow] = useState(() => Date.now());
 
-  const nextSequence = useCallback(() => {
-    sequenceRef.current += 1;
-    return sequenceRef.current;
+  const mounted = useRef(true);
+  // Sequence gate: a slow or stale response can never overwrite a newer one.
+  const sequence = useRef(0);
+  const applied = useRef(0);
+  const controllers = useRef(new Set<AbortController>());
+  const mutationInFlight = useRef(false);
+  const creatingRef = useRef(false);
+
+  // Mirrors of state read by guards and timers, so they see the latest values.
+  const playerRef = useRef<PlayerState | null>(player);
+  playerRef.current = player;
+  const statusRef = useRef<SessionStatus>(sessionStatus);
+  statusRef.current = sessionStatus;
+  const submittingRef = useRef(submitting);
+  submittingRef.current = submitting;
+
+  // Abort everything and stop updating state once unmounted.
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      for (const controller of controllers.current) controller.abort();
+      controllers.current.clear();
+    };
   }, []);
 
   const beginRequest = useCallback(() => {
     const controller = new AbortController();
-    controllersRef.current.add(controller);
+    controllers.current.add(controller);
     return controller;
   }, []);
 
   const endRequest = useCallback((controller: AbortController) => {
-    controllersRef.current.delete(controller);
+    controllers.current.delete(controller);
   }, []);
 
-  const report = useCallback(
-    (error: ApiError, operation: DiagnosticEvent["operation"]) => {
-      diagnostics.report(reportableError(error, operation));
-    },
-    [diagnostics],
-  );
-
-  // Sequence gate: a slow or stale response can never overwrite a newer one.
-  const applyIfNewest = useCallback((sequence: number, apply: () => void) => {
-    if (!mountedRef.current) return;
-    if (sequence <= appliedSequenceRef.current) return;
-    appliedSequenceRef.current = sequence;
-    apply();
+  // Authoritative server state replaces local state and clears transient flags.
+  const applyPlayer = useCallback((next: PlayerState) => {
+    setPlayer(next);
+    setSessionStatus("ready");
+    setCreating(false);
+    setSubmitting(false);
+    setPendingDirection(null);
+    setSessionError(null);
+    setActionError(null);
   }, []);
 
-  // Single player-fetch lifecycle shared by session checks, refreshes, guess
-  // reconciliation, and polling. An abort is silent (no report, no state
-  // write); a real failure is always reported, then optionally applied.
+  // One player-fetch lifecycle shared by the session check, refresh, reconcile,
+  // and poll. A newer request makes an older settled response a no-op.
   const fetchPlayer = useCallback(
-    async ({
-      operation,
-      onSuccess,
-      onFailure,
-    }: {
-      operation: DiagnosticEvent["operation"];
-      onSuccess: (player: PlayerState) => void;
-      onFailure?: (apiError: ApiError) => void;
-    }) => {
-      const sequence = nextSequence();
+    async (handlers: {
+      onSuccess?: (next: PlayerState) => void;
+      onFailure?: (error: ApiError) => void;
+    }): Promise<void> => {
+      const id = ++sequence.current;
       const controller = beginRequest();
       try {
-        const player = await getPlayer(controller.signal);
-        applyIfNewest(sequence, () => onSuccess(player));
+        const next = await getPlayer(controller.signal);
+        if (mounted.current && id > applied.current) {
+          applied.current = id;
+          handlers.onSuccess?.(next);
+        }
       } catch (error) {
-        if (isAbortError(error)) return;
-        const apiError = toApiError(error);
-        report(apiError, operation);
-        if (onFailure) {
-          applyIfNewest(sequence, () => onFailure(apiError));
+        if (isAbortError(error) || !mounted.current) return;
+        if (id > applied.current) {
+          applied.current = id;
+          handlers.onFailure?.(toApiError(error));
         }
       } finally {
         endRequest(controller);
       }
     },
-    [applyIfNewest, beginRequest, endRequest, nextSequence, report],
+    [beginRequest, endRequest],
   );
 
   const runSessionCheck = useCallback(async () => {
-    send({ type: "session/start" });
+    setSessionStatus("checking");
     await fetchPlayer({
-      operation: "session",
-      onSuccess: (player) => send({ type: "session/ready", player }),
-      onFailure: (apiError) => {
-        // Only a confirmed unauthorized response means "new player". Every
-        // other failure is recoverable and must not erase a known session.
-        if (apiError.code === "unauthorized") {
-          send({ type: "session/missing" });
+      onSuccess: applyPlayer,
+      onFailure: (error) => {
+        // Only a confirmed unauthorized response means "new player". Any other
+        // failure is recoverable and must not erase a known session.
+        if (error.code === "unauthorized") {
+          setPlayer(null);
+          setSessionStatus("onboarding");
+          setCreating(false);
+          setSubmitting(false);
+          setPendingDirection(null);
+          setActionError(null);
+        } else if (playerRef.current) {
+          setSessionStatus("ready");
+          setSessionError(error);
         } else {
-          send({ type: "session/failed", error: apiError });
+          setSessionStatus("error");
+          setSessionError(error);
         }
       },
     });
-  }, [fetchPlayer, send]);
+  }, [applyPlayer, fetchPlayer]);
 
-  const refresh = useCallback(async () => {
-    await fetchPlayer({
-      operation: "refresh",
-      onSuccess: (player) => send({ type: "session/ready", player }),
-      onFailure: (apiError) =>
-        send({ type: "session/failed", error: apiError }),
-    });
-  }, [fetchPlayer, send]);
+  const refresh = useCallback(() => {
+    void fetchPlayer({ onSuccess: applyPlayer, onFailure: setSessionError });
+  }, [applyPlayer, fetchPlayer]);
 
-  // Reconcile a lost/conflicting mutation against the server. Success replaces
-  // local state; failure keeps submissions blocked and surfaces the cause.
-  const reconcileGuess = useCallback(
+  // Reconcile an ambiguous mutation. A failed reconcile keeps submissions
+  // blocked and surfaces the cause; a later authoritative poll unblocks.
+  const reconcile = useCallback(
     async (cause: ApiError) => {
-      await fetchPlayer({
-        operation: "refresh",
-        onSuccess: (player) => send({ type: "guess/result", player }),
-        onFailure: () => send({ type: "guess/reconciling", error: cause }),
-      });
+      const id = ++sequence.current;
+      const controller = beginRequest();
+      try {
+        const next = await getPlayer(controller.signal);
+        if (mounted.current && id > applied.current) {
+          applied.current = id;
+          applyPlayer(next);
+        }
+      } catch (error) {
+        if (isAbortError(error) || !mounted.current) return;
+        setActionError(cause);
+      } finally {
+        endRequest(controller);
+      }
     },
-    [fetchPlayer, send],
+    [applyPlayer, beginRequest, endRequest],
   );
 
   const createPlayer = useCallback(
     (displayName: string) => {
-      if (stateRef.current.creating) return;
-
-      if (validateDisplayName(displayName) !== null) {
-        send({ type: "player/createFailed", error: invalidDisplayNameError() });
-        return;
-      }
-
-      const sequence = nextSequence();
+      if (creatingRef.current) return;
+      creatingRef.current = true;
+      setCreating(true);
+      setActionError(null);
+      const id = ++sequence.current;
       const controller = beginRequest();
-      mutationInFlightRef.current = true;
-      send({ type: "player/creating" });
+      mutationInFlight.current = true;
       void (async () => {
         try {
-          const { player } = await requestCreatePlayer(
+          const { player: next } = await requestCreatePlayer(
             displayName,
             controller.signal,
           );
-          applyIfNewest(sequence, () =>
-            send({ type: "player/created", player }),
-          );
+          if (mounted.current && id > applied.current) {
+            applied.current = id;
+            applyPlayer(next);
+          }
         } catch (error) {
           if (isAbortError(error)) return;
-          const apiError = toApiError(error);
-          report(apiError, "create-player");
-          applyIfNewest(sequence, () =>
-            send({ type: "player/createFailed", error: apiError }),
-          );
+          if (mounted.current && id > applied.current) {
+            applied.current = id;
+            setActionError(toApiError(error));
+          }
         } finally {
-          mutationInFlightRef.current = false;
+          creatingRef.current = false;
+          mutationInFlight.current = false;
           endRequest(controller);
+          if (mounted.current) setCreating(false);
         }
       })();
     },
-    [applyIfNewest, beginRequest, endRequest, nextSequence, report, send],
+    [applyPlayer, beginRequest, endRequest],
   );
+
+  const canSubmit = useCallback(() => {
+    const current = playerRef.current;
+    return (
+      statusRef.current === "ready" &&
+      current !== null &&
+      current.activeGuess === null &&
+      !submittingRef.current
+    );
+  }, []);
 
   const submitGuess = useCallback(
     (direction: Direction) => {
-      if (!canSubmitGuess(stateRef.current)) return;
-
-      const sequence = nextSequence();
+      if (!canSubmit()) return;
+      setSubmitting(true);
+      setPendingDirection(direction);
+      setActionError(null);
+      const id = ++sequence.current;
       const controller = beginRequest();
-      mutationInFlightRef.current = true;
-      send({ type: "guess/submitting", direction });
+      mutationInFlight.current = true;
       void (async () => {
         try {
-          const player = await requestSubmitGuess(direction, controller.signal);
-          applyIfNewest(sequence, () => send({ type: "guess/result", player }));
+          const next = await requestSubmitGuess(direction, controller.signal);
+          if (mounted.current && id > applied.current) {
+            applied.current = id;
+            applyPlayer(next);
+          }
         } catch (error) {
-          if (isAbortError(error)) return;
+          if (isAbortError(error) || !mounted.current) return;
           const apiError = toApiError(error);
-          report(apiError, "submit-guess");
-
           if (apiError.code === "unauthorized") {
-            // Session expired: re-run the check so the player is re-onboarded
-            // instead of being left with a broken submission.
+            // Session expired: re-run the check so the player is re-onboarded.
             await runSessionCheck();
-          } else if (apiError.code === "price_unavailable") {
-            // Definitive provider failure; a later refresh may re-enable.
-            applyIfNewest(sequence, () =>
-              send({ type: "guess/failed", error: apiError }),
-            );
-          } else if (apiError.code === "active_guess" || apiError.retryable) {
-            // Conflict or an uncertain outcome: never re-enable on our own.
-            await reconcileGuess(apiError);
+          } else if (
+            apiError.code === "active_guess" ||
+            isUncertain(apiError)
+          ) {
+            // Conflict or uncertain outcome: never re-enable on our own.
+            await reconcile(apiError);
           } else {
-            applyIfNewest(sequence, () =>
-              send({ type: "guess/failed", error: apiError }),
-            );
+            setSubmitting(false);
+            setPendingDirection(null);
+            setActionError(apiError);
           }
         } finally {
-          mutationInFlightRef.current = false;
+          mutationInFlight.current = false;
           endRequest(controller);
         }
       })();
     },
     [
-      applyIfNewest,
+      applyPlayer,
       beginRequest,
+      canSubmit,
       endRequest,
-      nextSequence,
-      reconcileGuess,
-      report,
+      reconcile,
       runSessionCheck,
-      send,
     ],
   );
 
@@ -289,80 +276,49 @@ export function useGame(): GameController {
     void runSessionCheck();
   }, [runSessionCheck]);
 
-  const refreshLatest = useCallback(() => {
-    void refresh();
-  }, [refresh]);
-
-  const dismissActionError = useCallback(() => {
-    send({ type: "action/dismiss" });
-  }, [send]);
+  const dismissActionError = useCallback(() => setActionError(null), []);
 
   // Initial session check. `runSessionCheck` is stable, so this runs once.
   useEffect(() => {
     void runSessionCheck();
   }, [runSessionCheck]);
 
-  // Abort everything and stop updating state once unmounted.
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-      for (const controller of controllersRef.current) {
-        controller.abort();
-      }
-      controllersRef.current.clear();
-    };
-  }, []);
-
-  const polling = shouldPoll(state);
-  const activeGuessId = state.player?.activeGuess?.id ?? null;
+  const activeGuessId = player?.activeGuess?.id ?? null;
+  const polling = sessionStatus === "ready";
 
   // Recursive timeout loop: no overlap, cadence re-read after each settle.
-  // `activeGuessId` is the cadence trigger. It is stable across identical poll
-  // responses, so the effect only re-arms on ready→pending and pending→resolved,
-  // applying the 5s active cadence immediately instead of after an idle tick.
+  // `activeGuessId` is the cadence trigger, so ready→pending applies the 5s
+  // active cadence immediately rather than after an idle tick.
   useEffect(() => {
     if (!polling) return;
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
 
     const schedule = (delay: number) => {
-      timer = setTimeout(() => {
-        void tick();
-      }, delay);
+      timer = setTimeout(() => void tick(), delay);
     };
 
     const tick = async () => {
-      if (cancelled || !mountedRef.current) return;
-      // Skip a tick while any request (poll or mutation/reconcile) is running.
-      if (pollInFlightRef.current || mutationInFlightRef.current) {
-        schedule(pollDelayMs(stateRef.current));
+      if (cancelled || !mounted.current) return;
+      if (mutationInFlight.current) {
+        schedule(activeGuessId === null ? IDLE_POLL_MS : ACTIVE_GUESS_POLL_MS);
         return;
       }
-      pollInFlightRef.current = true;
-      try {
-        // On failure `fetchPlayer` reports and keeps the previous state; the
-        // next tick is scheduled on cadence.
-        await fetchPlayer({
-          operation: "refresh",
-          onSuccess: (player) => send({ type: "session/ready", player }),
-        });
-      } finally {
-        pollInFlightRef.current = false;
-        if (!cancelled && mountedRef.current) {
-          schedule(pollDelayMs(stateRef.current));
-        }
+      // On failure the previous state is kept; the next tick is on cadence.
+      await fetchPlayer({ onSuccess: applyPlayer });
+      if (!cancelled && mounted.current) {
+        schedule(
+          playerRef.current?.activeGuess ? ACTIVE_GUESS_POLL_MS : IDLE_POLL_MS,
+        );
       }
     };
 
-    // Seed the first delay from the cadence trigger so a ready→pending
-    // transition arms the active cadence now; later ticks use the latest state.
     schedule(activeGuessId === null ? IDLE_POLL_MS : ACTIVE_GUESS_POLL_MS);
     return () => {
       cancelled = true;
       if (timer !== undefined) clearTimeout(timer);
     };
-  }, [activeGuessId, fetchPlayer, polling, send]);
+  }, [activeGuessId, applyPlayer, fetchPlayer, polling]);
 
   // Countdown display aid only: ticks while a guess is pending, never resolves
   // and never touches score or submission gating.
@@ -373,53 +329,36 @@ export function useGame(): GameController {
     return () => clearInterval(interval);
   }, [activeGuessId]);
 
-  // Reset bounded diagnostics when the player identity changes.
-  const previousSessionStatusRef = useRef(state.sessionStatus);
-  useEffect(() => {
-    const previous = previousSessionStatusRef.current;
-    const next = state.sessionStatus;
-    previousSessionStatusRef.current = next;
-    const involvesIdentity = (status: string) =>
-      status === "onboarding" || status === "ready";
-    if (
-      previous !== next &&
-      involvesIdentity(previous) &&
-      involvesIdentity(next)
-    ) {
-      diagnostics.reset();
-    }
-  }, [diagnostics, state.sessionStatus]);
-
   return useMemo<GameController>(
     () => ({
-      sessionStatus: state.sessionStatus,
-      player: state.player,
+      sessionStatus,
+      player,
       now,
-      creating: state.creating,
-      submitting: state.submitting,
-      pendingDirection: state.pendingDirection,
-      sessionError: state.sessionError,
-      actionError: state.actionError,
+      creating,
+      submitting,
+      pendingDirection,
+      sessionError,
+      actionError,
       createPlayer,
       submitGuess,
       retrySession,
-      refresh: refreshLatest,
+      refresh,
       dismissActionError,
     }),
     [
+      actionError,
       createPlayer,
+      creating,
       dismissActionError,
       now,
-      refreshLatest,
+      pendingDirection,
+      player,
+      refresh,
       retrySession,
-      state.actionError,
-      state.creating,
-      state.player,
-      state.pendingDirection,
-      state.sessionError,
-      state.sessionStatus,
-      state.submitting,
+      sessionError,
+      sessionStatus,
       submitGuess,
+      submitting,
     ],
   );
 }

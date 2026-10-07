@@ -1,5 +1,4 @@
-import type { ApiError, ApiErrorCode, Direction } from "@/game/types";
-import { DISPLAY_NAME_MAX_LENGTH } from "@/game/types";
+import type { ApiError, Direction } from "@/game/types";
 
 /**
  * All user-facing strings for the game UI, grouped by area so copy review
@@ -23,14 +22,10 @@ export const copy = {
     intro:
       "A display name is just a label for your game — it is not a login. This browser session keeps your score and guesses.",
     label: "Display name",
-    hint: `Up to ${DISPLAY_NAME_MAX_LENGTH} characters.`,
+    hint: "Up to 80 characters.",
     submit: "Start playing",
     submitting: "Starting…",
     serverRejected: "That display name wasn't accepted. Try a different one.",
-    displayNameErrors: {
-      empty: "Enter a display name to start playing.",
-      too_long: `Display names can be at most ${DISPLAY_NAME_MAX_LENGTH} characters.`,
-    },
   },
   price: {
     labelLive: "Latest BTC/USD price",
@@ -76,7 +71,7 @@ export function directionWord(direction: Direction): string {
   return direction === "up" ? "up" : "down";
 }
 
-const actionErrorMessages: Record<ApiErrorCode, string> = {
+const actionErrorMessages: Record<string, string> = {
   invalid_display_name: copy.onboarding.serverRejected,
   invalid_direction: "That guess wasn't understood. Use the Up or Down button.",
   invalid_body: "That request wasn't accepted. Try again.",
@@ -97,7 +92,7 @@ const actionErrorMessages: Record<ApiErrorCode, string> = {
 
 /** Maps a submission/creation failure to honest, non-technical wording. */
 export function actionErrorMessage(error: ApiError): string {
-  return actionErrorMessages[error.code];
+  return actionErrorMessages[error.code] ?? actionErrorMessages.unknown;
 }
 
 /** Session-load failures stay distinct from onboarding: the game may still exist on the server. */
@@ -105,16 +100,13 @@ export function sessionErrorMessage(error: ApiError | null): string {
   if (!error) {
     return "Something went wrong while loading your game. Your game stays on the server — try again.";
   }
-  if (error.code === "network" || error.category === "network") {
+  if (error.code === "network") {
     return "We couldn't reach the game server. Check your connection, then try again. Your game stays on the server.";
   }
-  if (
-    error.code === "persistence_unavailable" ||
-    error.category === "storage"
-  ) {
+  if (error.code === "persistence_unavailable") {
     return "The game server couldn't reach its storage. Your game stays there — try again in a moment.";
   }
-  if (error.code === "unauthorized" || error.category === "session") {
+  if (error.code === "unauthorized") {
     return "Your session couldn't be confirmed. Try again.";
   }
   if (error.status !== null && error.status >= 500) {

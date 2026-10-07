@@ -205,33 +205,35 @@ describe("session lifecycle", () => {
 });
 
 describe("onboarding", () => {
-  it("blocks empty and whitespace-only names locally without a POST", async () => {
-    fetchMock.mockResolvedValue(jsonResponse({ error: "unauthorized" }, 401));
+  it("submits the raw name to the server, which owns validation", async () => {
+    fetchMock.mockImplementation((input) => {
+      const url = String(input);
+      if (url === "/api/player") {
+        return Promise.resolve(jsonResponse({ error: "unauthorized" }, 401));
+      }
+      if (url === "/api/players") {
+        return Promise.resolve(
+          jsonResponse({ error: "invalid_display_name" }, 400),
+        );
+      }
+      return Promise.resolve(jsonResponse({ error: "unknown" }, 500));
+    });
 
     const user = userEvent.setup();
     render(<App />);
     await screen.findByRole("heading", { name: copy.onboarding.heading });
 
-    const input = screen.getByLabelText(copy.onboarding.label);
     await user.click(
       screen.getByRole("button", { name: copy.onboarding.submit }),
     );
-    expect(screen.getByRole("alert")).toHaveTextContent(
-      "Enter a display name to start playing.",
-    );
 
-    await user.type(input, "   ");
-    await user.click(
-      screen.getByRole("button", { name: copy.onboarding.submit }),
-    );
-    expect(screen.getByRole("alert")).toHaveTextContent(
-      "Enter a display name to start playing.",
-    );
-
-    const postCalls = fetchMock.mock.calls.filter(
+    const postCall = fetchMock.mock.calls.find(
       ([request]) => String(request) === "/api/players",
     );
-    expect(postCalls).toHaveLength(0);
+    expect(postCall?.[1]?.body).toBe(JSON.stringify({ displayName: "" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      copy.onboarding.serverRejected,
+    );
   });
 
   it("creates a player with the trimmed name and shows the server score", async () => {

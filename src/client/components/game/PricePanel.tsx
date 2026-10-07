@@ -1,5 +1,4 @@
-import { derivePriceDisplay } from "@/game/price-display";
-import type { PlayerState, Pricing } from "@/game/types";
+import type { LatestGuess, PlayerState, Pricing } from "@/game/types";
 import { cn } from "@/lib/utils";
 import { copy } from "./copy";
 import { formatUsdPrice } from "./format";
@@ -8,6 +7,8 @@ interface PricePanelProps {
   player: PlayerState;
 }
 
+type PriceMovement = "up" | "down" | null;
+
 /**
  * The latest BTC/USD price, always visible so the player can see the current
  * market in every play state. It is tinted by the last resolved move only
@@ -15,8 +16,9 @@ interface PricePanelProps {
  * number.
  */
 export function PricePanel({ player }: PricePanelProps) {
-  const display = derivePriceDisplay(player);
-  const disclosure = priceDisclosure(player.pricing);
+  const observation = player.pricing.observation;
+  const price = observation ? observation.price : null;
+  const movement = movementOf(player);
   return (
     <section
       aria-labelledby="price-label"
@@ -25,27 +27,24 @@ export function PricePanel({ player }: PricePanelProps) {
       <p id="price-label" className="text-base text-muted-foreground">
         {copy.price.labelLive}
       </p>
-      {display.price !== null ? (
+      {price !== null ? (
         <p
           className={cn(
             "text-5xl leading-none font-semibold tracking-tight tabular-nums whitespace-nowrap transition-colors duration-300 motion-reduce:transition-none sm:text-[80px]",
-            display.movement === "up" &&
-              "text-emerald-700 dark:text-emerald-400",
-            display.movement === "down" && "text-destructive",
+            movement === "up" && "text-emerald-700 dark:text-emerald-400",
+            movement === "down" && "text-destructive",
           )}
         >
-          {formatUsdPrice(display.price)}
-          {display.movement ? (
+          {formatUsdPrice(price)}
+          {movement ? (
             <span
               role="img"
               aria-label={
-                display.movement === "up"
-                  ? copy.price.ariaHigher
-                  : copy.price.ariaLower
+                movement === "up" ? copy.price.ariaHigher : copy.price.ariaLower
               }
               className="ml-2 align-middle text-2xl leading-none sm:text-3xl"
             >
-              {display.movement === "up" ? "▲" : "▼"}
+              {movement === "up" ? "▲" : "▼"}
             </span>
           ) : null}
         </p>
@@ -54,11 +53,31 @@ export function PricePanel({ player }: PricePanelProps) {
           {copy.price.unavailableValue}
         </p>
       )}
-      {disclosure ? (
-        <p className="text-sm text-muted-foreground">{disclosure}</p>
+      {priceDisclosure(player.pricing) ? (
+        <p className="text-sm text-muted-foreground">
+          {priceDisclosure(player.pricing)}
+        </p>
       ) : null}
     </section>
   );
+}
+
+/**
+ * Display-only tint direction, taken from the server's resolved outcome rather
+ * than by re-comparing prices on the client. `null` is neutral: no resolved
+ * move to show, an active round, or equal prices.
+ */
+function movementOf(player: PlayerState): PriceMovement {
+  if (player.activeGuess !== null || player.latestGuess === null) {
+    return null;
+  }
+  return isHigher(player.latestGuess) ? "up" : "down";
+}
+
+function isHigher(guess: LatestGuess): boolean {
+  // The server's result already encodes the price direction relative to the
+  // guessed direction, so no exact price comparison is duplicated here.
+  return (guess.result === "correct") === (guess.direction === "up");
 }
 
 function priceDisclosure(pricing: Pricing): string | null {

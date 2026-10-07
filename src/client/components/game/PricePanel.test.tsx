@@ -156,6 +156,8 @@ describe("PricePanel price display", () => {
       <PricePanel
         player={player({
           latestGuess: latestGuess({
+            direction: "down",
+            result: "correct",
             startingPrice: "100.00",
             observedPrice: "90.00",
           }),

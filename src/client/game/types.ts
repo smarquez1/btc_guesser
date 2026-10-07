@@ -1,8 +1,9 @@
 // Shared client contracts for the BTC Guesser interface.
 //
 // Response shapes mirror the documented backend player API (README "Player API
-// contract"). This module is the frozen seam between the data/logic modules
-// (`@/api`, `@/diagnostics`, `@/game/useGame`) and the presentational UI.
+// contract"). This module is the frozen seam between the fetch layer (`@/api`)
+// and the presentational UI: it holds types and two purely presentational helpers
+// and no game rules. The backend is the source of truth.
 
 export type Direction = "up" | "down";
 export type GuessResult = "correct" | "incorrect";
@@ -46,42 +47,15 @@ export interface PlayerState {
   pricing: Pricing;
 }
 
-/** Diagnostic classes used to keep server failures distinct from network ones. */
-export type DiagnosticCategory =
-  | "validation"
-  | "session"
-  | "conflict"
-  | "provider"
-  | "storage"
-  | "rate_limit"
-  | "network"
-  | "unknown";
-
-export type ApiErrorCode =
-  | "invalid_display_name"
-  | "invalid_direction"
-  | "invalid_body"
-  | "unauthorized"
-  | "active_guess"
-  | "price_unavailable"
-  | "persistence_unavailable"
-  | "too_many_requests"
-  | "payload_too_large"
-  | "unsupported_media_type"
-  | "invalid_request"
-  | "network"
-  | "unknown";
-
 /**
- * A classified failure. `requestId` is the backend correlation id when the
- * response exposes one, otherwise `null` (never invented for a lost response).
+ * A failed request. `code` is the backend's error code when it returns one,
+ * otherwise a coarse fallback; `requestId` is the backend correlation id when
+ * present and never invented.
  */
 export interface ApiError {
-  code: ApiErrorCode;
+  code: string;
   status: number | null;
-  category: DiagnosticCategory;
   requestId: string | null;
-  retryable: boolean;
 }
 
 export type SessionStatus = "checking" | "onboarding" | "ready" | "error";
@@ -108,23 +82,6 @@ export interface GameController {
   retrySession: () => void;
   refresh: () => void;
   dismissActionError: () => void;
-}
-
-export const DISPLAY_NAME_MAX_LENGTH = 80;
-
-/** Why a display name is invalid; the UI maps this code to user-facing copy. */
-export type DisplayNameError = "empty" | "too_long";
-
-/** Mirrors the server's display-name rule: trimmed, nonempty, <= 80 UTF-16 units. */
-export function validateDisplayName(value: string): DisplayNameError | null {
-  const trimmed = value.trim();
-  if (trimmed.length === 0) {
-    return "empty";
-  }
-  if (trimmed.length > DISPLAY_NAME_MAX_LENGTH) {
-    return "too_long";
-  }
-  return null;
 }
 
 /** Remaining seconds before the server could resolve an active guess; never negative. */
