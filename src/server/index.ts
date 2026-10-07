@@ -1,8 +1,12 @@
 import { fileURLToPath } from "node:url";
 import { buildApp } from "./app.js";
 import { runtimePersistence } from "./dynamodb.js";
+import { guessMinWaitMs } from "./players.js";
 import { createPricingService } from "./pricing.js";
-import { persistenceConfigError } from "./production-config.js";
+import {
+  persistenceConfigError,
+  timingConfigError,
+} from "./production-config.js";
 import { createResolver } from "./resolver.js";
 
 const production =
@@ -15,6 +19,11 @@ const persistenceError = persistenceConfigError(
 );
 if (persistenceError) {
   console.error(persistenceError);
+  process.exit(1);
+}
+const timingError = timingConfigError(production, guessMinWaitMs());
+if (timingError) {
+  console.error(timingError);
   process.exit(1);
 }
 const app = buildApp({

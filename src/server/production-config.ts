@@ -8,3 +8,12 @@ export function persistenceConfigError(
     return "DYNAMODB_TABLE is required in production; refusing to start";
   return null;
 }
+
+export function timingConfigError(
+  production: boolean,
+  minWaitMs: number,
+): string | null {
+  if (production && minWaitMs < 60_000)
+    return "GUESS_MIN_WAIT_MS below 60000 is not allowed in production; refusing to start";
+  return null;
+}
