@@ -102,13 +102,14 @@ errors retain their status with `invalid_request`; 503 `price_unavailable` or
 `persistence_unavailable`. Database failures are not
 reported as conflicts and private credentials never appear in JSON.
 
-New-player creation is bounded in production per client address (default 10
-creations per minute, fixed window) so the unauthenticated endpoint cannot be used
-for free write amplification; a returning valid session is served without
-consuming that budget. Development disables the limiter because every local
-request arrives from one loopback address, so a per-address limit would block
-normal play. The limiter is process-local: with more than one app instance each
-holds its own window, and a shared store would be needed for a fleet-wide limit.
+New-player creation is bounded in production by a process-local, instance-wide
+fixed-window limiter (default 60 creations per minute) so the unauthenticated
+endpoint cannot be used for free write amplification; a returning valid session is
+served without consuming that budget. The server never reads a client address, so
+the limit is a coarse circuit breaker shared by all clients rather than per-client
+fairness. Development disables the limiter. The limiter is process-local: with more
+than one app instance each holds its own window, and a shared store would be needed
+for a fleet-wide limit.
 
 Player diagnostics log only fixed event/category/operation fields and server-issued
 request IDs. Unexpected storage/request failures use error level; missing config
