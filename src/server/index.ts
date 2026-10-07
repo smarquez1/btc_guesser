@@ -1,6 +1,7 @@
 import { fileURLToPath } from "node:url";
 import { buildApp } from "./app.js";
 import { runtimePersistence } from "./dynamodb.js";
+import { createFatalHandler } from "./fatal.js";
 import { guessMinWaitMs } from "./players.js";
 import { createPricingService } from "./pricing.js";
 import {
@@ -54,6 +55,20 @@ async function shutdown() {
 
 process.once("SIGINT", shutdown);
 process.once("SIGTERM", shutdown);
+
+const fatal = createFatalHandler({
+  log: app.log,
+  exit: (code) => process.exit(code),
+});
+process.on("uncaughtException", (error) =>
+  fatal("uncaughtException", error.name),
+);
+process.on("unhandledRejection", (reason) =>
+  fatal(
+    "unhandledRejection",
+    reason instanceof Error ? reason.name : "UnknownError",
+  ),
+);
 
 try {
   await app.listen({ port, host });
