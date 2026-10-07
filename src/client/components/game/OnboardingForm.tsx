@@ -3,8 +3,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { ApiError } from "@/game/types";
 import { validateDisplayName } from "@/game/types";
-import { ActionNotice } from "./ActionNotice";
-import { copy } from "./copy";
+import { actionErrorMessage, copy } from "./copy";
+import { Notice } from "./Notice";
 
 interface OnboardingFormProps {
   creating: boolean;
@@ -100,7 +100,12 @@ export function OnboardingForm({
           ) : null}
         </div>
         {otherError ? (
-          <ActionNotice error={otherError} onDismiss={onDismissError} />
+          <Notice
+            error={otherError}
+            message={actionErrorMessage(otherError)}
+            actionLabel={copy.notice.dismiss}
+            onAction={onDismissError}
+          />
         ) : null}
         <Button type="submit" className="h-11 text-base" disabled={creating}>
           {creating ? copy.onboarding.submitting : copy.onboarding.submit}

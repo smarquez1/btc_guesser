@@ -1,13 +1,13 @@
 import { useEffect, useState } from "react";
-import { copy } from "@/components/game/copy";
+import { copy, sessionErrorMessage } from "@/components/game/copy";
 import { GameFooter } from "@/components/game/GameFooter";
 import { GameHeader } from "@/components/game/GameHeader";
 import { GuessPanel } from "@/components/game/GuessPanel";
+import { Notice } from "@/components/game/Notice";
 import { OnboardingForm } from "@/components/game/OnboardingForm";
 import { PricePanel } from "@/components/game/PricePanel";
 import { SessionErrorNotice } from "@/components/game/SessionErrorNotice";
 import { SessionLoading } from "@/components/game/SessionLoading";
-import { SessionNotice } from "@/components/game/SessionNotice";
 import type { SessionStatus } from "@/game/types";
 import { useGame } from "@/game/useGame";
 
@@ -39,9 +39,11 @@ export function App() {
           player ? (
             <>
               {controller.sessionError ? (
-                <SessionNotice
+                <Notice
                   error={controller.sessionError}
-                  onRetry={controller.refresh}
+                  message={sessionErrorMessage(controller.sessionError)}
+                  actionLabel={copy.session.retry}
+                  onAction={controller.refresh}
                 />
               ) : null}
               <PricePanel player={player} />

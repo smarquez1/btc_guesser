@@ -1,9 +1,9 @@
 import { Button } from "@/components/ui/button";
 import type { ApiError, Direction, PlayerState } from "@/game/types";
 import { cn } from "@/lib/utils";
-import { ActionNotice } from "./ActionNotice";
-import { copy } from "./copy";
+import { actionErrorMessage, copy } from "./copy";
 import { LatestResult } from "./LatestResult";
+import { Notice } from "./Notice";
 import { PendingGuess } from "./PendingGuess";
 
 interface GuessPanelProps {
@@ -89,7 +89,12 @@ export function GuessPanel({
         <LatestResult guess={player.latestGuess} />
       ) : null}
       {actionError ? (
-        <ActionNotice error={actionError} onDismiss={onDismissError} />
+        <Notice
+          error={actionError}
+          message={actionErrorMessage(actionError)}
+          actionLabel={copy.notice.dismiss}
+          onAction={onDismissError}
+        />
       ) : null}
       <div className="flex flex-col gap-1.5 text-center text-sm text-muted-foreground">
         {copy.guess.rules.map((rule) => (
