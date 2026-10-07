@@ -109,5 +109,25 @@ describe("application", () => {
       });
       expect(json.statusCode).toBe(404);
     });
+
+    it("sets baseline security headers on health, API, asset, and 404 responses", async () => {
+      const server = await setup();
+      const responses = await Promise.all([
+        server.inject("/api/health"),
+        server.inject({
+          method: "POST",
+          url: "/api/players",
+          payload: { displayName: "" },
+        }),
+        server.inject("/assets/app.js"),
+        server.inject("/api/unknown"),
+      ]);
+      for (const response of responses) {
+        expect(response.headers["x-content-type-options"]).toBe("nosniff");
+        expect(response.headers["referrer-policy"]).toBe(
+          "strict-origin-when-cross-origin",
+        );
+      }
+    });
   });
 });

@@ -58,6 +58,10 @@ export function buildApp({
     logController: new LogController({ disableRequestLogging: true }),
     requestIdHeader: false,
   });
+  app.addHook("onSend", async (_request, reply) => {
+    reply.header("X-Content-Type-Options", "nosniff");
+    reply.header("Referrer-Policy", "strict-origin-when-cross-origin");
+  });
   app.register(cookie);
   if (pricingService) {
     const pricing = pricingService(app.log);
