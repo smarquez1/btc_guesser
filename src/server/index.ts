@@ -2,12 +2,21 @@ import { fileURLToPath } from "node:url";
 import { buildApp } from "./app.js";
 import { runtimePersistence } from "./dynamodb.js";
 import { createPricingService } from "./pricing.js";
+import { persistenceConfigError } from "./production-config.js";
 import { createResolver } from "./resolver.js";
 
 const production =
   process.env.NODE_ENV === "production" ||
   import.meta.url.endsWith("/dist/server/index.js");
 const persistence = runtimePersistence();
+const persistenceError = persistenceConfigError(
+  production,
+  persistence !== undefined,
+);
+if (persistenceError) {
+  console.error(persistenceError);
+  process.exit(1);
+}
 const app = buildApp({
   production,
   store: persistence?.store,

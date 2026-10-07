@@ -29,8 +29,11 @@ http://127.0.0.1:3000/api/health. Both return `{ "status": "ok" }`.
 Coinbase pricing, and background guess resolution/scoring. Interface integration
 remains separate work. Runtime guess submission requires trusted pricing and
 returns `price_unavailable` without writes during degradation; there is no
-placeholder price. Health/static serving work without database config;
-player operations return `persistence_unavailable` in that case.
+placeholder price. `/api/health` is a liveness check and never probes DynamoDB,
+so health and static serving work without database config in development and the
+default `buildApp()`; player operations return `persistence_unavailable` in that
+case. A production run (`pnpm start` or a deployed service) requires
+`DYNAMODB_TABLE` and refuses to start without it.
 
 ### DynamoDB Local
 
