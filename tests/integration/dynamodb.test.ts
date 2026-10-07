@@ -13,6 +13,7 @@ import {
 } from '@aws-sdk/client-dynamodb';
 import { GetCommand, PutCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import { priceRepository } from '../../server/repositories/prices.ts';
+import { guessRepository } from '../../server/repositories/guesses.ts';
 import { priceService } from '../../server/services/prices.ts';
 import { priceRoutes } from '../../server/routes/prices.ts';
 import type { CachedPrice } from '../../server/types/price.ts';
@@ -21,14 +22,14 @@ import { playerRepository } from '../../server/repositories/players.ts';
 import { loadConfig } from '../../server/config.ts';
 import { createDynamoDB } from '../../server/lib/dynamodb.ts';
 
-const endpoint = process.env.TEST_DYNAMODB_ENDPOINT;
+const endpoint = process.env.DYNAMODB_ENDPOINT;
 if (
   !endpoint ||
   new URL(endpoint).protocol !== 'http:' ||
   !['127.0.0.1', 'localhost', '[::1]'].includes(new URL(endpoint).hostname)
 ) {
   throw new Error(
-    'Set TEST_DYNAMODB_ENDPOINT to a local DynamoDB HTTP endpoint',
+    'Set DYNAMODB_ENDPOINT to a local DynamoDB HTTP endpoint',
   );
 }
 
@@ -399,4 +400,106 @@ test('price service shares persisted cache and rejects expiry before DynamoDB TT
     symbol: 'BTC-USD', tradeId: 20, price: 65000, observedAt: 1800000000,
     freshUntil: 1800000005, expiresAt: 1800003600,
   });
+});
+
+test('guess API transactions enforce one pending guess and exactly-once scoring across app instances', async (t) => {
+  const tableName = `btc-guess-test-${randomUUID()}`;
+  const config = loadConfig({ ...environment, DYNAMODB_TABLE: tableName });
+  const { client, documentClient } = createDynamoDB(config);
+  const apps = [buildApp(config), buildApp(config)];
+  t.after(async () => {
+    await Promise.all(apps.map(app => app.close()));
+
+    try {
+      await client.send(new DeleteTableCommand({ TableName: tableName }));
+    } finally {
+      client.destroy();
+    }
+  });
+  await setupTable(tableName);
+  let clock = 1800000000;
+  t.mock.method(Date, 'now', () => clock * 1000);
+  const players = playerRepository(documentClient, tableName);
+  const guesses = guessRepository(documentClient, tableName);
+  const prices = priceRepository(documentClient, tableName);
+  const orphan = {
+    id: randomUUID(), playerId: randomUUID(), direction: 'up' as const,
+    status: 'pending' as const, startingPrice: 100, startingObservedAt: clock,
+    startedAt: clock, deadline: clock + 60,
+  };
+
+  assert.equal(await guesses.create(orphan), false);
+  assert.equal(await guesses.get(orphan.id), undefined);
+  const playerId = randomUUID();
+  const otherId = randomUUID();
+  await players.create({ id: playerId, name: 'Player', score: 0, createdAt: clock });
+  await players.create({ id: otherId, name: 'Other', score: 0, createdAt: clock });
+  await prices.save({ symbol: 'BTC-USD', tradeId: 1, price: 100,
+    observedAt: clock, freshUntil: clock + 1000, expiresAt: clock + 3600 });
+  const headers = { cookie: `btc_player=${playerId}` };
+  const submitted = await Promise.all(Array.from({ length: 8 }, (_, index) =>
+    apps[index % 2].inject({ method: 'POST', url: '/api/guesses', headers, payload: { direction: 'up' } }),
+  ));
+
+  assert.equal(submitted.filter(response => response.statusCode === 201).length, 1);
+  assert.equal(submitted.filter(response => response.statusCode === 409).length, 7);
+  const initial = submitted.find(response => response.statusCode === 201)?.json();
+
+  assert.ok(initial);
+  assert.equal(initial.startedAt, clock);
+  assert.equal(initial.deadline, clock + 60);
+  assert.equal((await players.get(playerId))?.pendingGuessId, initial.id);
+  assert.equal((await guesses.get(initial.id))?.expiresAt, undefined);
+  const read = (index = 0) => apps[index % 2].inject({ url: `/api/guesses/${initial.id}`, headers });
+  const foreign = await apps[1].inject({ url: `/api/guesses/${initial.id}`,
+    headers: { cookie: `btc_player=${otherId}` } });
+
+  assert.equal(foreign.statusCode, 404);
+  clock = initial.deadline - 1;
+  assert.equal((await read()).json().status, 'pending');
+  clock = initial.deadline;
+  await prices.save({ symbol: 'BTC-USD', tradeId: 2, price: 101,
+    observedAt: clock - 1, freshUntil: clock + 1000, expiresAt: clock + 3600 });
+  assert.equal((await read()).json().status, 'pending');
+  await prices.save({ symbol: 'BTC-USD', tradeId: 3, price: 100,
+    observedAt: clock, freshUntil: clock + 1000, expiresAt: clock + 3600 });
+  assert.equal((await read()).json().status, 'pending');
+  assert.equal((await players.get(playerId))?.score, 0);
+  await prices.save({ symbol: 'BTC-USD', tradeId: 4, price: 101,
+    observedAt: clock, freshUntil: clock + 1000, expiresAt: clock + 3600 });
+  const resolved = await Promise.all(Array.from({ length: 8 }, (_, index) => read(index)));
+
+  for (const response of resolved) {
+    assert.equal(response.statusCode, 200);
+    assert.deepEqual(response.json(), {
+      ...initial, status: 'resolved', finalPrice: 101, finalObservedAt: clock,
+      resolvedAt: clock, correct: true, scoreDelta: 1,
+    });
+  }
+  assert.equal((await players.get(playerId))?.score, 1);
+  assert.equal((await players.get(playerId))?.pendingGuessId, undefined);
+  await read();
+  assert.equal((await players.get(playerId))?.score, 1);
+  const next = await apps[1].inject({ method: 'POST', url: '/api/guesses', headers, payload: { direction: 'down' } });
+
+  assert.equal(next.statusCode, 201);
+  clock += 60;
+  await prices.save({ symbol: 'BTC-USD', tradeId: 5, price: 102,
+    observedAt: clock, freshUntil: clock + 1000, expiresAt: clock + 3600 });
+  const lost = await apps[0].inject({ url: `/api/guesses/${next.json().id}`, headers });
+
+  assert.equal(lost.statusCode, 200);
+  assert.equal(lost.json().scoreDelta, -1);
+  assert.equal((await players.get(playerId))?.score, 0);
+  assert.equal((await players.get(playerId))?.pendingGuessId, undefined);
+  const stored = await guesses.get(initial.id);
+
+  assert.ok(stored?.expiresAt);
+  assert.equal(await guesses.resolve({ ...stored, scoreDelta: 99 }), false);
+  assert.deepEqual(await guesses.get(initial.id), stored);
+  assert.equal((await players.get(playerId))?.score, 0);
+  clock = stored.expiresAt;
+  assert.equal((await read()).statusCode, 404);
+  assert.ok(await guesses.get(initial.id));
+  assert.equal((await players.get(playerId))?.score, 0);
 });

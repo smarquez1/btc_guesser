@@ -100,8 +100,8 @@ in epoch seconds. Cache freshness uses a separate `freshUntil` timestamp;
 players: TTL must not leave a player pointing at a deleted unresolved guess.
 Choose retention for resolved guesses and other ephemeral records in their tasks.
 
-Task 005 will use a conditional transaction to create a guess and set the
-player's pending guess ID only if none exists. Resolution will conditionally
+Guess submission uses a conditional transaction to create a guess and set the
+player's pending guess ID only if none exists. Resolution conditionally
 save the result, increment the player's score, and clear that pending ID in
 one transaction. This supports direct lookups, prevents conflicting submissions,
 and makes retries safe without locks or background workers.
@@ -157,8 +157,34 @@ not returned by the API.
 
 Available stale data returns 200 with `stale: true`; no available data returns
 503 with a retry hint. Database errors propagate to the safe 500 handler. The API
-sets `Cache-Control: no-store`. Task 005 must evaluate deadline eligibility from
+sets `Cache-Control: no-store`. Guess resolution evaluates deadline eligibility from
 `observedAt`, independently of `stale`; cached data from before a deadline cannot
 resolve a guess simply because it was read afterward. No background jobs or
 cross-process refresh locks are introduced; simultaneous cache misses may issue
 multiple Coinbase requests, while conditional persistence preserves ordering.
+
+## Implemented guess lifecycle
+
+`POST /api/guesses` validates the cookie, browser origin, and an exact body with
+direction `up` or `down`. The service obtains a fresh price, records its source
+time separately from submission time, and sets a 60-second deadline. A transaction
+creates the pending guess and conditionally sets the player's pending ID.
+Pending guesses have no TTL, avoiding dangling profile references.
+
+`GET /api/guesses/:id` validates ownership before fetching pricing. Before the
+deadline it returns pending immediately; afterward the shared resolution rule
+requires an observation at or after the deadline with a different price.
+An eligible stale fallback can resolve; missing pricing leaves the guess pending.
+Resolution atomically stores evidence, adds +1 or -1 to the score, and clears
+the matching pending ID. Concurrent resolvers reread the committed result after
+a conditional conflict. Transaction-conflict cancellations receive at most three
+retries with exponential backoff and jitter. Other failures and exhausted retries
+propagate as safe 500s.
+
+Resolved guesses retain starting/final prices and observation timestamps,
+submission/deadline/resolution times, direction, correctness, and score delta.
+Their TTL is 24 hours after resolution; reads enforce expiry before TTL cleanup.
+Scores have no expiry. Clients recover a pending ID through the player profile,
+poll the guess, then fetch the profile for the latest score. Profile and price
+reads do not themselves resolve guesses. Submission returns 409 while any guess
+remains pending; clients must poll it before submitting again.

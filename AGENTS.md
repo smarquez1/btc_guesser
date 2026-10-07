@@ -13,6 +13,8 @@ This challenge targets desktop only. Use the 16:10 mockup as the reference; mobi
 
 ## Implementation rules
 
+For code changes, modify the target files directly. Never create temporary scripts (e.g. `modify.py`, `update.py`, `patch.py`) to perform edits.
+
 Prefer explicit, boring code, focused files, and small local React state. Apply DRY to shared behavior and business rules, not a few repeated lines. Add dependencies, folders, helpers, or layers only for a concrete need.
 
 Keep the implementation easy to walk through from route to service to repository. Prefer small functions and explicit operations; do not add abstractions for hypothetical future needs.
@@ -53,7 +55,7 @@ Avoid Redux, Zustand, queues, microservices, DI frameworks, generic repositories
 - Follow the workflow: implementation -> user approval -> requested tests -> commit.
   Add tests only when the user asks, after reviewing the implementation.
 
-- Use Lefthook before commits to run Biome on staged files and `pnpm typecheck` (`tsc --noEmit`) on the whole project.
+- Use Lefthook before commits to run Biome on staged files, `pnpm typecheck` (`tsc --noEmit`) on the whole project, all unit and integration tests, and the production build. Integration tests require DynamoDB Local; set `TEST_DYNAMODB_ENDPOINT` when using a port other than 8000.
 - Run lint and type checks only before committing or when the user explicitly asks. Do not run formatters unless explicitly asked.
 - Add and run unit tests when the developer asks, before committing the related work. Keep most coverage fast and deterministic; add focused integration tests where real component interactions matter.
 - Defer end-to-end tests to the final verification task. Use Playwright for direct verification of meaningful UI changes. CI remains deferred unless explicitly requested.

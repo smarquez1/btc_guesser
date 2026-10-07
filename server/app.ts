@@ -9,6 +9,9 @@ import { createDynamoDB } from './lib/dynamodb.ts';
 import { playerRepository } from './repositories/players.ts';
 import { playerRoutes } from './routes/players.ts';
 import { playerService } from './services/players.ts';
+import { guessRepository } from './repositories/guesses.ts';
+import { guessRoutes } from './routes/guesses.ts';
+import { guessService } from './services/guesses.ts';
 import { healthRoutes } from './routes/health.ts';
 
 export function buildApp(config?: Config) {
@@ -48,6 +51,9 @@ export function buildApp(config?: Config) {
       fetchCoinbasePrice,
     );
     app.register(priceRoutes, { prices });
+
+    const guesses = guessService(guessRepository(documentClient, config.tableName), prices);
+    app.register(guessRoutes, { config, players, guesses });
   }
 
   return app;

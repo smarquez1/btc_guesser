@@ -5,3 +5,9 @@ pre-commit:
       run: pnpm exec biome lint --error-on-warnings --no-errors-on-unmatched --files-ignore-unknown=true {staged_files}
     typecheck:
       run: pnpm typecheck
+    unit-tests:
+      run: pnpm test
+    integration-tests:
+      run: pnpm test:integration
+    build:
+      run: pnpm build

@@ -9,7 +9,7 @@ Update this index as work progresses; record validation and limitations in each 
 | 002 | done | [Backend foundation](002-backend-foundation.md) |
 | 003 | done | [Anonymous players](003-anonymous-players.md) |
 | 004 | done | [BTC pricing](004-btc-pricing.md) |
-| 005 | todo | [Guess lifecycle](005-guess-lifecycle.md) |
+| 005 | done | [Guess lifecycle](005-guess-lifecycle.md) |
 | 006 | todo | [Game UI](006-game-ui.md) |
 | 007 | todo | [Test coverage review](007-unit-tests.md) |
 | 008 | todo | [End-to-end verification](008-end-to-end-verification.md) |

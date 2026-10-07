@@ -2,7 +2,7 @@
 
 The project folder is `btc_guesser`; the package name is `btc-guesser`.
 
-The backend provides a health endpoint, anonymous player identities, Coinbase BTC/USD pricing, and local DynamoDB setup. The client currently renders an empty React root. The approved UI mockup is in [docs/ui.pen](docs/ui.pen); implementation tasks and status are tracked in [docs/tasks/index.md](docs/tasks/index.md).
+The backend provides a health endpoint, anonymous player identities, Coinbase BTC/USD pricing, guess submission and resolution, and local DynamoDB setup. The client currently renders an empty React root. The approved UI mockup is in [docs/ui.pen](docs/ui.pen); implementation tasks and status are tracked in [docs/tasks/index.md](docs/tasks/index.md).
 
 ## Development tools
 
@@ -19,8 +19,12 @@ mise exec -- pnpm db:create
 Docker Compose runs DynamoDB Local on `127.0.0.1:8000` with a persistent named
 volume. Stop it with `docker compose down`; the data remains for the next start.
 If port 8000 is occupied, run `DYNAMODB_LOCAL_PORT=8001 docker compose up -d`
-and set `DYNAMODB_ENDPOINT=http://127.0.0.1:8001` in `.env`.
+and set both `DYNAMODB_ENDPOINT` and `TEST_DYNAMODB_ENDPOINT` to
+`http://127.0.0.1:8001` in `.env`.
 The local credentials in `.env.example` are placeholders, not AWS credentials.
+
+`.env` is required for backend startup, database setup, and integration tests.
+These commands fail immediately if it is missing. Keep the file local; Git ignores it.
 
 `db:create` uses the endpoint configured in `.env`, creates the table if missing,
 checks its string `pk`/`sk` keys, and enables `expiresAt` TTL. It is safe to rerun
@@ -107,7 +111,34 @@ A stale fallback has `stale: true`; it expires after one hour even if DynamoDB
 has not deleted its TTL record. Without an available observation the response is
 503 with `{ "error": "BTC price unavailable" }` and `Retry-After: 5`. DynamoDB
 failures return safe 500 responses. Cache freshness does not establish whether
-an observation is eligible to resolve a guess; task 005 checks its timestamp.
+an observation is eligible to resolve a guess; resolution checks its timestamp.
+
+## Guesses
+
+`POST /api/guesses` accepts only `{ "direction": "up" }` or
+`{ "direction": "down" }` with the player's cookie. It returns 201 with the
+guess ID, direction, pending status, starting price and observation time,
+`startedAt`, and `deadline` (60 seconds after submission). All times are integer
+epoch seconds set by the backend. Submission requires a fresh cached or fetched
+price; unavailable or stale pricing returns 503 with `Retry-After: 5`.
+Invalid fields return 400, invalid identity 401, foreign origins 403, and an
+existing pending guess 409. Creation atomically stores the guess and sets the
+player's pending ID, so concurrent submissions cannot both succeed.
+
+`GET /api/guesses/:id` returns the authenticated player's guess and lazily
+resolves it when an observation at or after its deadline differs from the
+starting price. Early observations and equal prices leave it pending. Source
+timestamps establish eligibility independently of freshness. An upstream outage
+without an available observation leaves the guess pending; storage failures
+return safe 500 responses. Unknown, expired, or another player's guesses return
+404. Responses omit identity and storage fields and disable HTTP caching.
+
+A resolved response also includes `finalPrice`, `finalObservedAt`, `resolvedAt`,
+`correct`, and `scoreDelta` (+1 or -1). The result, score update, and removal of
+the pending ID commit together exactly once. Read `/api/players/me` afterward
+for the current score. Poll the pending guess before submitting another guess;
+submission itself does not resolve an existing one. Pending guesses never
+expire; resolved evidence expires after 24 hours, while scores remain persisted.
 
 ## Project MCP servers
 
@@ -137,7 +168,7 @@ Replace the example profile and region with your own. Never store credentials in
 
 ## Checks before commits
 
-Lefthook runs Biome on staged source files and TypeScript (`tsc --noEmit`) on the whole project before each commit, without rewriting files or running tests. `pnpm install` installs the hook through the project's `prepare` script. To install it manually:
+Lefthook runs Biome on staged source files, TypeScript (`tsc --noEmit`) on the whole project, all unit and DynamoDB integration tests, and the production build before each commit, without rewriting files. DynamoDB Local must be running. Integration tests load `TEST_DYNAMODB_ENDPOINT` from `.env`, copied from `.env.example`; update it there when using a different local port. `pnpm install` installs the hook through the project's `prepare` script. To install it manually:
 
 ```sh
 pnpm exec lefthook install
@@ -152,7 +183,7 @@ pnpm typecheck
 
 The workflow is implementation, user approval, requested tests, then commit.
 Do not add tests before the user requests them. Formatting is not part of the commit hook. Add and run unit tests when the
-developer asks, before committing related work. The hook does not run tests.
+developer asks, before committing related work. The hook runs both test suites.
 
 ## Tests
 
@@ -161,16 +192,17 @@ mise exec -- pnpm test
 ```
 
 This runs deterministic configuration, player, Coinbase-client, and pricing unit
-tests plus Fastify route integration tests using injection, without a listening
+tests plus guess lifecycle/retry coverage and Fastify route integration tests using injection, without a listening
 server or external services. Pricing tests cover source validation, fetch-based
 freshness, unchanged tickers, expiry, stale fallback, and safe error responses. Player coverage includes identity validation, initial scores, cookie
 security, input/origin rejection, throttling, and safe database error responses.
 
-For real DynamoDB integration tests, start the local container and explicitly
-choose its loopback endpoint:
+For real DynamoDB integration tests, start the local container and set
+`TEST_DYNAMODB_ENDPOINT` in `.env` to its loopback endpoint (port 8000 in
+`.env.example`):
 
 ```sh
-TEST_DYNAMODB_ENDPOINT=http://127.0.0.1:8000 mise exec -- pnpm test:integration
+mise exec -- pnpm test:integration
 ```
 
 Use port 8001 if configured above. These tests create uniquely named temporary
@@ -179,5 +211,8 @@ credentials. They verify table setup, reruns, incompatible keys/TTL, document re
 player persistence across app instances, conditional profile creation, concurrent
 creation limits, hourly rollover while old TTL records still exist, concurrent
 price writes ordered by trade ID, unchanged-trade freshness updates, and explicit
-price expiry before TTL cleanup.
+price expiry before TTL cleanup. Guess coverage verifies concurrent submission
+and resolution across app instances, exactly-once positive/negative scoring,
+observation eligibility, ownership, transaction rollback, and resolved evidence
+expiry before TTL cleanup.
 End-to-end tests remain deferred to task 008.
