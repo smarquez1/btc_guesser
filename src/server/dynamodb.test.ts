@@ -5,12 +5,18 @@ import {
   UpdateCommand,
 } from "@aws-sdk/lib-dynamodb";
 import { describe, expect, it, vi } from "vitest";
-import { DynamoPlayerStore } from "./dynamodb.js";
+import { buildApp } from "./app.js";
+import {
+  DynamoPlayerStore,
+  StorageDeadlineError,
+  storagePolicy,
+} from "./dynamodb.js";
 import {
   ActiveGuessConflict,
   ObsoleteGuessConflict,
   type PendingGuess,
   type PlayerRecord,
+  type PlayerStore,
   type ResolvedGuess,
 } from "./players.js";
 
@@ -179,5 +185,74 @@ describe("DynamoDB command contract", () => {
       playerId: "player",
     });
     expect(send.mock.calls[2][0].input).not.toHaveProperty("ExclusiveStartKey");
+  });
+});
+describe("storage deadline", () => {
+  it("rejects a hung operation with StorageDeadlineError after the deadline", async () => {
+    vi.useFakeTimers();
+    try {
+      const send = vi.fn(() => new Promise<never>(() => {}));
+      const store = new DynamoPlayerStore({ send }, "table");
+      const pending = store.create(player);
+      const assertion =
+        expect(pending).rejects.toBeInstanceOf(StorageDeadlineError);
+      await vi.advanceTimersByTimeAsync(storagePolicy.deadlineMs);
+      await assertion;
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not raise an unhandled rejection when a timed-out operation settles late", async () => {
+    vi.useFakeTimers();
+    const unhandled: unknown[] = [];
+    const listener = (reason: unknown) => unhandled.push(reason);
+    process.on("unhandledRejection", listener);
+    try {
+      let settleLate!: () => void;
+      const send = vi.fn(
+        () =>
+          new Promise<never>((_resolve, reject) => {
+            settleLate = () => reject(new Error("late"));
+          }),
+      );
+      const store = new DynamoPlayerStore({ send }, "table");
+      const pending = store.create(player);
+      const assertion =
+        expect(pending).rejects.toBeInstanceOf(StorageDeadlineError);
+      await vi.advanceTimersByTimeAsync(storagePolicy.deadlineMs);
+      await assertion;
+      settleLate();
+      await vi.advanceTimersByTimeAsync(0);
+      await Promise.resolve();
+    } finally {
+      process.off("unhandledRejection", listener);
+      vi.useRealTimers();
+    }
+    expect(unhandled).toEqual([]);
+  });
+
+  it("maps a storage deadline to 503 persistence_unavailable on a player route", async () => {
+    const store: PlayerStore = {
+      create: vi.fn(async () => {}),
+      get: vi.fn(async () => {
+        throw new StorageDeadlineError();
+      }),
+      accept: vi.fn(async () => player),
+      due: vi.fn(async () => []),
+      resolve: vi.fn(async () => player),
+    };
+    const app = buildApp({ store });
+    try {
+      const response = await app.inject({
+        method: "GET",
+        url: "/api/player",
+        cookies: { btc_player: `${"a".repeat(8)}.${"b".repeat(64)}` },
+      });
+      expect(response.statusCode).toBe(503);
+      expect(response.json()).toEqual({ error: "persistence_unavailable" });
+    } finally {
+      await app.close();
+    }
   });
 });

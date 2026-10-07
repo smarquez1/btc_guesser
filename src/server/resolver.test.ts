@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { StorageDeadlineError } from "./dynamodb.js";
 import {
   type DueGuess,
   ObsoleteGuessConflict,
@@ -195,6 +196,28 @@ describe("createResolver", () => {
     await resolver.sweep();
     expect(f.store.resolve).not.toHaveBeenCalled();
     expect(f.entries.filter((entry) => entry.level === "error")).toEqual([]);
+    await resolver.close();
+  });
+
+  it("degrades discovery and skips resolution when due discovery hits the storage deadline", async () => {
+    const f = fixture();
+    vi.mocked(f.store.due).mockRejectedValue(new StorageDeadlineError());
+    const resolver = createResolver({
+      store: f.store,
+      trusted: async () => observation("101", epoch),
+      now: () => epoch,
+      log: f.log,
+      runId: () => "run-1",
+    });
+    await resolver.sweep();
+    expect(f.store.resolve).not.toHaveBeenCalled();
+    const errors = f.entries.filter((entry) => entry.level === "error");
+    expect(errors).toHaveLength(1);
+    expect(errors[0]?.fields).toMatchObject({
+      event: "resolver_operation_degraded",
+      category: "persistence_failure",
+      operation: "discovery",
+    });
     await resolver.close();
   });
 
