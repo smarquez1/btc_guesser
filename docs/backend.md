@@ -91,6 +91,7 @@ current access patterns:
 | --- | --- | --- | --- |
 | Player | `PLAYER#<id>` | `PROFILE` | Validate identity; read score and pending guess ID |
 | Guess | `GUESS#<id>` | `DETAILS` | Read pending state or saved result by ID |
+| Creation limit | `PLAYER_LIMIT#<SHA-256 of connection IP>` | `<UTC hour start>` | Atomically allow ten creation attempts per hour |
 | Price cache | `PRICE#BTC-USD` | `LATEST` | Read/update the shared observation |
 
 Players retain their score and have no TTL. Ephemeral records use `expiresAt`
@@ -109,3 +110,24 @@ and makes retries safe without locks or background workers.
 `expiresAt` TTL. It checks existing keys and TTL configuration on reruns.
 DynamoDB Local accepts TTL configuration but does not perform automatic TTL
 deletion; explicit expiry checks are still required.
+
+## Implemented player API
+
+`POST /api/players` creates a server-generated UUID v4 identity, generated display
+name, zero score, and epoch-second `createdAt`. The identity is a bearer secret
+held only in an HTTP-only SameSite Strict cookie (`btc_player`, path `/api`,
+one-year max age, Secure when configured). Responses exclude the identity.
+An existing valid cookie reuses the profile; invalid cookies receive 401 and
+are cleared. `GET /api/players/me` validates the cookie and reads the profile
+consistently from DynamoDB, returning 401 for missing or unknown identities.
+Creation accepts no state fields and checks supplied browser Origin against
+`APP_ORIGIN`; explicit cross-site requests are rejected.
+
+Creation limits use conditional DynamoDB updates, allowing ten attempts per
+connection IP per fixed UTC hour across processes. Only a SHA-256 IP hash is
+stored. Counter keys include the hour, so old records cannot block new windows
+even before TTL cleanup. `expiresAt` is two hours after the window start; player
+profiles have no TTL. A failed profile write can consume a limit attempt.
+Forwarded headers are not trusted; proxy configuration belongs to deployment.
+Cookie loss has no identity recovery. Clearing cookies can create additional
+players within the creation limit, an accepted limitation of anonymous play.

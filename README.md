@@ -1,6 +1,8 @@
-# BTC guess
+# BTC Guesser
 
-The backend foundation provides a health endpoint and local DynamoDB setup. The client currently renders an empty React root. The approved UI mockup is in [docs/ui.pen](docs/ui.pen); implementation tasks and status are tracked in [docs/tasks/index.md](docs/tasks/index.md).
+The project folder is `btc_guesser`; the package name is `btc-guesser`.
+
+The backend provides a health endpoint, anonymous player identities, and local DynamoDB setup. The client currently renders an empty React root. The approved UI mockup is in [docs/ui.pen](docs/ui.pen); implementation tasks and status are tracked in [docs/tasks/index.md](docs/tasks/index.md).
 
 ## Development tools
 
@@ -38,7 +40,7 @@ port 3000; update `vite.config.ts` if you change the backend port.
 The backend validates configuration before listening. `PORT` defaults to 3000,
 `HOST` to `127.0.0.1`, and `COOKIE_SECURE` to false. `AWS_REGION`,
 `DYNAMODB_TABLE`, and `APP_ORIGIN` are required. `APP_ORIGIN` must be a browser
-origin without a path. Identity settings are reserved for task 003.
+origin without a path. Set `COOKIE_SECURE=true` when serving over HTTPS.
 
 Build the client and run the backend:
 
@@ -51,6 +53,33 @@ The backend currently serves only API routes; serving the built client and
 production deployment belong to task 009. For AWS, omit `DYNAMODB_ENDPOINT`
 and the local credential placeholders, and use the normal AWS credential chain.
 Do not use `db:create` to provision deployed infrastructure.
+
+## Anonymous players
+
+`POST /api/players` takes no fields (omit the body or send `{}`). It creates a
+player with a generated name and persisted score of zero, returning 201. An
+existing valid cookie returns that same player with 200. `GET /api/players/me`
+returns the persisted profile. Responses contain `name`, `score`, `createdAt`
+(epoch seconds), and `pendingGuessId` when present; identity tokens are omitted.
+
+The browser retains the opaque identity in the `btc_player` cookie, scoped to
+`/api`, HTTP-only, SameSite Strict, and valid for one year. Frontend requests use
+the same-origin `/api` proxy; JavaScript does not need to read the token. Invalid,
+unknown, or missing identities return 401 on profile reads. Creation with an
+invalid cookie returns 401 and clears it; a subsequent creation can start fresh.
+Losing the cookie loses access to that player's score; recovery is out of scope.
+
+Creation rejects supplied player fields with 400 and foreign browser origins
+with 403. New identities are limited to ten creation attempts per source IP per
+UTC hour using an atomic DynamoDB counter. Exceeding the limit returns 429 with
+`Retry-After`; returning players do not consume attempts. Failed database writes
+return a safe 500 and may consume an attempt. Rate-limit records use TTL; player
+profiles retain their score without TTL.
+
+Fastify currently uses the connection IP and does not trust forwarded headers.
+The Vite proxy can therefore share one limit among local browsers. Deployment
+must configure a trusted proxy deliberately if individual client limits are
+needed behind a load balancer. Never blindly trust client-supplied forwarded IPs.
 
 ## Project MCP servers
 
@@ -102,8 +131,10 @@ developer asks, before committing related work. The hook does not run tests.
 mise exec -- pnpm test
 ```
 
-This runs deterministic configuration unit tests and Fastify integration tests
-using injection, without a listening server or external services.
+This runs deterministic configuration and player-service unit tests plus Fastify
+route integration tests using injection, without a listening server or external
+services. Player coverage includes identity validation, initial scores, cookie
+security, input/origin rejection, throttling, and safe database error responses.
 
 For real DynamoDB integration tests, start the local container and explicitly
 choose its loopback endpoint:
@@ -114,5 +145,7 @@ TEST_DYNAMODB_ENDPOINT=http://127.0.0.1:8000 mise exec -- pnpm test:integration
 
 Use port 8001 if configured above. These tests create uniquely named temporary
 tables and delete them afterward; they do not use the application table or AWS
-credentials. They verify table setup, reruns, incompatible keys/TTL, and document
-reads/writes. End-to-end tests remain deferred to task 008.
+credentials. They verify table setup, reruns, incompatible keys/TTL, document reads/writes,
+player persistence across app instances, conditional profile creation, concurrent
+creation limits, and hourly rollover while old TTL records still exist.
+End-to-end tests remain deferred to task 008.

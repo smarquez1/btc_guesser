@@ -24,3 +24,9 @@ Foundation coverage was added with task 002: configuration unit tests, Fastify
 injection integration tests, and optional local DynamoDB integration tests.
 Commands and validation are recorded in README and task 002. Game and UI coverage
 remain pending until those features exist; this task remains todo.
+
+Task 003 also adds five player-service unit tests, six Fastify player-route tests,
+and two real DynamoDB tests for persistence and concurrent creation limits.
+All 33 unit/route tests and five local DynamoDB tests passed on 2026-10-07.
+The anonymous-player coverage is recorded in task 003; game and UI review remains
+pending, so this task stays todo.

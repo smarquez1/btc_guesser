@@ -11,7 +11,9 @@ import {
   UpdateTimeToLiveCommand,
   ResourceNotFoundException,
 } from '@aws-sdk/client-dynamodb';
-import { GetCommand, PutCommand } from '@aws-sdk/lib-dynamodb';
+import { GetCommand, PutCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
+import { buildApp } from '../../server/app.ts';
+import { playerRepository } from '../../server/repositories/players.ts';
 import { loadConfig } from '../../server/config.ts';
 import { createDynamoDB } from '../../server/lib/dynamodb.ts';
 
@@ -189,4 +191,117 @@ test('table setup rejects existing incompatible TTL without changing it', async 
     new DescribeTimeToLiveCommand({ TableName: tableName }),
   );
   assert.equal(TimeToLiveDescription?.AttributeName, 'wrongExpiry');
+});
+
+test('player API persists identities across app instances and rejects duplicate profile writes', async (t) => {
+  const tableName = `btc-guess-test-${randomUUID()}`;
+  const config = loadConfig({ ...environment, DYNAMODB_TABLE: tableName });
+  const { client, documentClient } = createDynamoDB(config);
+  const firstApp = buildApp(config);
+  const secondApp = buildApp(config);
+  t.after(async () => {
+    await Promise.all([firstApp.close(), secondApp.close()]);
+
+    try {
+      await client.send(new DeleteTableCommand({ TableName: tableName }));
+    } finally {
+      client.destroy();
+    }
+  });
+  await setupTable(tableName);
+  const repository = playerRepository(documentClient, tableName);
+  const created = await firstApp.inject({ method: 'POST', url: '/api/players' });
+
+  assert.equal(created.statusCode, 201);
+  assert.equal(created.json().score, 0);
+  const identityCookie = String(created.headers['set-cookie']).split(';')[0];
+  const id = identityCookie.split('=')[1];
+  const stored = await documentClient.send(new GetCommand({
+    TableName: tableName, Key: { pk: `PLAYER#${id}`, sk: 'PROFILE' },
+    ConsistentRead: true,
+  }));
+
+  assert.equal(stored.Item?.score, 0);
+  assert.equal(stored.Item?.expiresAt, undefined);
+  assert.ok(Number.isInteger(stored.Item?.createdAt));
+  assert.deepEqual(await repository.get(id), {
+    id, name: created.json().name, score: 0, createdAt: created.json().createdAt,
+  });
+  await assert.rejects(repository.create({
+    id, name: 'Overwrite', score: 99, createdAt: 1,
+  }), { name: 'ConditionalCheckFailedException' });
+
+  const resumed = await secondApp.inject({
+    method: 'POST', url: '/api/players', headers: { cookie: identityCookie },
+  });
+  assert.equal(resumed.statusCode, 200);
+  assert.deepEqual(resumed.json(), created.json());
+
+  // Simulate later game state and verify the API reads storage, not cookie state.
+  await documentClient.send(new UpdateCommand({
+    TableName: tableName, Key: { pk: `PLAYER#${id}`, sk: 'PROFILE' },
+    UpdateExpression: 'SET score = :score, pendingGuessId = :guess',
+    ExpressionAttributeValues: { ':score': -4, ':guess': 'guess-123' },
+  }));
+  const profile = await secondApp.inject({
+    url: '/api/players/me', headers: { cookie: identityCookie },
+  });
+  assert.equal(profile.statusCode, 200);
+  assert.equal(profile.json().score, -4);
+  assert.equal(profile.json().pendingGuessId, 'guess-123');
+  assert.equal(profile.json().id, undefined);
+
+  const unknown = await secondApp.inject({
+    url: '/api/players/me', headers: { cookie: `btc_player=${randomUUID()}` },
+  });
+  assert.equal(unknown.statusCode, 401);
+});
+
+test('creation limit is atomic across app instances and ignores old counters before TTL deletion', async (t) => {
+  const tableName = `btc-guess-test-${randomUUID()}`;
+  const config = loadConfig({ ...environment, DYNAMODB_TABLE: tableName });
+  const { client, documentClient } = createDynamoDB(config);
+  const apps = [buildApp(config), buildApp(config)];
+  t.after(async () => {
+    await Promise.all(apps.map((app) => app.close()));
+
+    try {
+      await client.send(new DeleteTableCommand({ TableName: tableName }));
+    } finally {
+      client.destroy();
+    }
+  });
+  await setupTable(tableName);
+  const responses = await Promise.all(Array.from({ length: 16 }, (_, index) =>
+    apps[index % 2].inject({
+      method: 'POST', url: '/api/players', remoteAddress: '127.0.0.2',
+      headers: { 'x-forwarded-for': `192.0.2.${index}` },
+    }),
+  ));
+
+  assert.equal(responses.filter((response) => response.statusCode === 201).length, 10);
+  assert.equal(responses.filter((response) => response.statusCode === 429).length, 6);
+  const otherAddress = await apps[0].inject({
+    method: 'POST', url: '/api/players', remoteAddress: '127.0.0.3',
+  });
+  assert.equal(otherAddress.statusCode, 201);
+
+  const repository = playerRepository(documentClient, tableName);
+  const windowStart = 1800000000;
+  const hash = 'window-boundary-check';
+  for (let attempt = 0; attempt < 10; attempt++) {
+    assert.equal(await repository.consumeCreationAttempt(hash, windowStart), true);
+  }
+  assert.equal(await repository.consumeCreationAttempt(hash, windowStart + 3599), false);
+  assert.equal(await repository.consumeCreationAttempt(hash, windowStart + 3600), true);
+  assert.equal(await repository.consumeCreationAttempt(hash, windowStart + 7200), true);
+  const oldCounter = await documentClient.send(new GetCommand({
+    TableName: tableName,
+    Key: { pk: `PLAYER_LIMIT#${hash}`, sk: String(windowStart) },
+    ConsistentRead: true,
+  }));
+
+  assert.equal(oldCounter.Item?.attempts, 10);
+  assert.equal(oldCounter.Item?.expiresAt, windowStart + 7200);
+  assert.ok(Number.isInteger(oldCounter.Item?.expiresAt));
 });

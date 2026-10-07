@@ -3,7 +3,7 @@ import { loadConfig } from './config.ts';
 
 try {
   const config = loadConfig();
-  const app = buildApp();
+  const app = buildApp(config);
 
   for (const signal of ['SIGINT', 'SIGTERM'] as const) {
     process.once(signal, async () => {

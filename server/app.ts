@@ -1,7 +1,13 @@
 import Fastify, { type FastifyError } from 'fastify';
+import cookie from '@fastify/cookie';
+import type { Config } from './config.ts';
+import { createDynamoDB } from './lib/dynamodb.ts';
+import { playerRepository } from './repositories/players.ts';
+import { playerRoutes } from './routes/players.ts';
+import { playerService } from './services/players.ts';
 import { healthRoutes } from './routes/health.ts';
 
-export function buildApp() {
+export function buildApp(config?: Config) {
   const app = Fastify({ logger: true });
 
   app.setErrorHandler((error: FastifyError, request, reply) => {
@@ -25,6 +31,14 @@ export function buildApp() {
   );
 
   app.register(healthRoutes);
+
+  if (config) {
+    const { client, documentClient } = createDynamoDB(config);
+    const players = playerService(playerRepository(documentClient, config.tableName));
+    app.addHook('onClose', async () => client.destroy());
+    app.register(cookie);
+    app.register(playerRoutes, { config, players });
+  }
 
   return app;
 }
