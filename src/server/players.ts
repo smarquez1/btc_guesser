@@ -61,6 +61,10 @@ export interface PlayerOptions {
   displayPricing?: () => DisplayPricing;
   // Bounds unauthenticated player creation; overridable for tests.
   creationLimit?: RateLimitPolicy;
+  // Enables the creation limiter. Defaults to `production`: development traffic
+  // all arrives from one loopback address, so a per-address limit there would be
+  // effectively global and block normal play (including private windows).
+  rateLimit?: boolean;
 }
 export function digestToken(token: string) {
   return createHash("sha256").update(token).digest("hex");
@@ -154,8 +158,11 @@ export async function playerRoutes(
     price = async () => null,
     displayPricing = () => ({ status: "unavailable", observation: null }),
     creationLimit = playerCreationPolicy,
+    rateLimit = production,
   } = options;
-  const creationLimiter = createRateLimiter(creationLimit, now);
+  const creationLimiter = rateLimit
+    ? createRateLimiter(creationLimit, now)
+    : null;
   const state = (player: PlayerRecord) => ({
     ...publicPlayer(player),
     pricing: displayPricing(),
@@ -226,8 +233,9 @@ export async function playerRoutes(
     const existing = await authenticate(request);
     if (existing) return reply.code(200).send(state(existing));
     // Only a genuine new-player creation consumes the budget; a returning
-    // session is never throttled. This bounds unauthenticated write amplification.
-    if (!creationLimiter.allow(request.ip)) {
+    // session is never throttled. Production-only: development shares one
+    // loopback address for every browser.
+    if (creationLimiter && !creationLimiter.allow(request.ip)) {
       reply.header("Retry-After", String(creationLimiter.retryAfterSeconds()));
       return reply.code(429).send({ error: "too_many_requests" });
     }

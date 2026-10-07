@@ -435,6 +435,7 @@ describe("player API", () => {
     const app = setup({
       store,
       creationLimit: { limit: 2, windowMs: 60_000 },
+      rateLimit: true,
     });
     const createFrom = (remoteAddress: string) =>
       app.inject({
@@ -469,6 +470,7 @@ describe("player API", () => {
       store,
       now: () => clock,
       creationLimit: { limit: 1, windowMs: 1_000 },
+      rateLimit: true,
     });
     const createFrom = () =>
       app.inject({
@@ -480,6 +482,22 @@ describe("player API", () => {
     expect((await createFrom()).statusCode).toBe(201);
     expect((await createFrom()).statusCode).toBe(429);
     clock = 1_000;
+    expect((await createFrom()).statusCode).toBe(201);
+  });
+  it("does not rate-limit creation outside production (loopback shares one address)", async () => {
+    const { store } = memoryStore();
+    const app = setup({
+      store,
+      creationLimit: { limit: 1, windowMs: 60_000 },
+    });
+    const createFrom = () =>
+      app.inject({
+        method: "POST",
+        url: "/api/players",
+        remoteAddress: "198.51.100.7",
+        payload: { displayName: "Ada" },
+      });
+    expect((await createFrom()).statusCode).toBe(201);
     expect((await createFrom()).statusCode).toBe(201);
   });
   it("reports persistence configuration and infrastructure failures without masking them as conflicts or leaking errors", async () => {
