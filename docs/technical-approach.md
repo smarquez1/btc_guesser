@@ -27,7 +27,7 @@ Deploy the React build and Fastify API together as one small application. Keep g
 
 ## Fairness and reliability
 
-The server records the starting price and acceptance time. A guess cannot resolve before 60 seconds have elapsed. At or after the deadline, resolve using the first fresh Coinbase observation that differs from the starting price. The observation must be received after the deadline; its exchange trade timestamp is useful context but is not an extra eligibility condition. This means a price move before the deadline counts if it remains different when observed after the deadline. An unchanged price or provider failure leaves the guess pending. Database updates must prevent overlapping guesses and duplicate score changes.
+The server records the starting price and acceptance time. A guess cannot resolve before 60 seconds have elapsed. At or after the deadline, resolve using the latest fresh Coinbase observation at check time that differs from the starting price. The observation must be received after the deadline; its exchange trade timestamp is useful context but is not an extra eligibility condition. This means a price move before the deadline counts if it remains different when observed after the deadline. An unchanged price or provider failure leaves the guess pending. Database updates must prevent overlapping guesses and duplicate score changes.
 
 Price data is polled and cached briefly by the backend so browser traffic does not create a separate provider request each time. This is sampled market data, not a guarantee of observing every trade.
 
@@ -112,10 +112,11 @@ polls/reads are silent. Tests exercise seeded secrets/names to prove redaction.
 
 Guess resolution is a pure rule module (`src/server/resolution.ts`) separate from
 routes, storage, and scheduling. A guess is eligible only when server time and the
-observation's `receivedAt` are both at or after `eligibleAt` (acceptedAt + 60s);
-the provider trade timestamp is context, never an eligibility gate. T003's
+observation's `receivedAt` are both at or after `eligibleAt` (acceptedAt + 60s),
+and the observation is still fresh at decision time; the provider trade timestamp
+is context and bounded by the freshness policy, not a deadline condition. T003's
 `comparePrices` compares full-precision values exactly: equal values keep the
-guess pending, and the first eligible differing observation decides the outcome.
+guess pending, and the latest fresh observation at check time decides the outcome.
 Up/Down scores +1/−1 from the rule module only; the browser never decides
 outcomes, and stale or unavailable observations never resolve.
 

@@ -166,10 +166,11 @@ contact Coinbase. Local checks do not establish live provider/deployment health.
 
 Resolution is a pure rule separate from Fastify, storage, and scheduling
 (`src/server/resolution.ts`). A guess is eligible only when server time and the
-trusted observation's `receivedAt` are both at or after `eligibleAt`; the provider
-trade timestamp is context, never an eligibility gate. Full-precision values are
-compared exactly: equal prices keep the guess pending, and the first eligible
-differing observation decides `correct` (`+1`) or `incorrect` (`−1`). Stale or
+trusted observation's `receivedAt` are both at or after `eligibleAt`, and the
+observation is still fresh at decision time; the provider trade timestamp is
+context, not the deadline condition. Full-precision values are compared exactly:
+equal prices keep the guess pending, and the latest fresh observation at check
+time decides `correct` (`+1`) or `incorrect` (`−1`). Stale or
 unavailable observations never resolve a guess, and a move before the deadline
 counts if the price is still different when checked after it.
 
@@ -293,7 +294,7 @@ This is a local run, not a public deployment.
 - Let the player choose **Up** or **Down**.
 - Allow only one unresolved guess per player.
 - Do not resolve a guess before 60 seconds have elapsed.
-- At or after 60 seconds, compare the starting price with the first fresh price observation received by the backend. If the values differ, resolve the guess; if they are equal or data is unavailable, keep it pending.
+- At or after 60 seconds, compare the starting price with the latest fresh price observation received by the backend. If the values differ, resolve the guess; if they are equal or data is unavailable, keep it pending. Resolution is checked on a poll cadence, so a move that appears and reverts between checks may not decide a guess.
 - Award `+1` for a correct guess and `−1` for an incorrect guess. New players start at `0`.
 - Persist player scores and guess state in a backend data store.
 
