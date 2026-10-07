@@ -51,9 +51,9 @@ export function OnboardingForm({
     if (creating) {
       return;
     }
-    const message = validateDisplayName(value);
-    if (message) {
-      setLocalError(message);
+    const code = validateDisplayName(value);
+    if (code) {
+      setLocalError(copy.onboarding.displayNameErrors[code]);
       return;
     }
     onSubmit(value.trim());

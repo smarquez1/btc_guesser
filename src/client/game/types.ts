@@ -110,14 +110,17 @@ export interface GameController {
 
 export const DISPLAY_NAME_MAX_LENGTH = 80;
 
+/** Why a display name is invalid; the UI maps this code to user-facing copy. */
+export type DisplayNameError = "empty" | "too_long";
+
 /** Mirrors the server's display-name rule: trimmed, nonempty, <= 80 UTF-16 units. */
-export function validateDisplayName(value: string): string | null {
+export function validateDisplayName(value: string): DisplayNameError | null {
   const trimmed = value.trim();
   if (trimmed.length === 0) {
-    return "Enter a display name to start playing.";
+    return "empty";
   }
   if (trimmed.length > DISPLAY_NAME_MAX_LENGTH) {
-    return `Display names can be at most ${DISPLAY_NAME_MAX_LENGTH} characters.`;
+    return "too_long";
   }
   return null;
 }

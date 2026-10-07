@@ -27,6 +27,10 @@ export const copy = {
     submit: "Start playing",
     submitting: "Starting…",
     serverRejected: "That display name wasn't accepted. Try a different one.",
+    displayNameErrors: {
+      empty: "Enter a display name to start playing.",
+      too_long: `Display names can be at most ${DISPLAY_NAME_MAX_LENGTH} characters.`,
+    },
   },
   price: {
     labelLive: "Latest BTC/USD price",
