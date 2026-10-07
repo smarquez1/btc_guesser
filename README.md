@@ -2,7 +2,7 @@
 
 The project folder is `btc_guesser`; the package name is `btc-guesser`.
 
-The backend provides a health endpoint, anonymous player identities, Coinbase BTC/USD pricing, guess submission and resolution, and local DynamoDB setup. The React game UI is being implemented in task 006 and still requires browser verification. The UI guide is in [docs/ui.pen](docs/ui.pen); implementation tasks and status are tracked in [docs/tasks/index.md](docs/tasks/index.md).
+The backend provides a health endpoint, anonymous player identities, Coinbase BTC/USD pricing, guess submission and resolution, and local DynamoDB setup. The React game UI and focused desktop browser verification are complete; deployment is next. The UI guide is in [docs/ui.pen](docs/ui.pen); implementation tasks and status are tracked in [docs/tasks/index.md](docs/tasks/index.md).
 
 The frontend uses React, TypeScript, Vite, and Tailwind CSS with semantic native
 HTML. Keep markup and styling minimal; small amounts of plain CSS are fine.
@@ -253,5 +253,11 @@ browser dates. Network and polling timers remain real. The test confirms pending
 at 59 seconds, then advances to 65 seconds to allow any pre-deadline five-second
 price cache to expire before resolution. Game rules and stored deadlines are unchanged.
 It runs in seconds. Failure traces are saved under ignored `test-results/`.
-Broader error-state and desktop verification remain tracked in task 008; no CI
-or broad browser suite is configured.
+The second scenario submits a lower guess, checks duplicate rejection, closes
+and relaunches Chromium with the same temporary profile while pending, verifies
+equal prices remain pending after the deadline, and confirms incorrect scoring
+and persistence at -1. It also checks keyboard focus, desktop overflow, and an
+inline submission error using an intercepted 503 response. Other requests use
+the real backend and isolated local table; the price source and dates are controlled.
+Pending/result/error screenshots are saved under ignored `test-results/`.
+No CI or broad browser suite is configured.

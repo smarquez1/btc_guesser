@@ -27,7 +27,7 @@ export function GuessControls({
     feedback = (
       <>
         Your guess: <span className={guess.direction === 'up' ? 'text-green-700' : 'text-red-700'}>{guess.direction.toUpperCase()}</span>.{' '}
-        {remaining > 0 ? `Result in ${remaining}s.` : 'Waiting for an eligible price change…'}
+        {remaining > 0 ? `Checking begins in ${remaining}s.` : 'Waiting for an eligible price change…'}
       </>
     );
   } else if (pending) {

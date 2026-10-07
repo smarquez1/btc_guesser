@@ -18,6 +18,12 @@ Read docs/ui.md and inspect the retained .pen mockup before implementation.
 
 ## Validation and limitations
 
+- Countdown wording now says “Checking begins in …” because resolution can take
+  longer than 60 seconds when prices remain equal or eligible data is unavailable.
+  Updated the existing happy-path assertions to match; game rules are unchanged.
+- Wording validation: the existing Playwright happy path passes (one test,
+  5.6 seconds overall), including countdown, resolution, and score persistence.
+
 Implementation is in progress; browser verification is pending. Keep this task
 `in-progress` until acceptance criteria and verification are recorded.
 
@@ -103,3 +109,8 @@ Implementation is in progress; browser verification is pending. Keep this task
   parameter types and one unused mock parameter; both are corrected. Whole-project
   lint and typecheck now pass. Lefthook runs staged lint, typecheck, all unit/API
   and local DynamoDB integration tests, and the production build during commit.
+- Remaining desktop verification completed under task 008: higher/correct and
+  lower/incorrect outcomes, equal-price pending, duplicate rejection, full Chromium
+  restart while pending, keyboard focus, inline submission failure, and readable
+  1440 × 900 layout. Both Playwright scenarios pass (13.5 seconds overall).
+  Reviewed pending/result/error screenshots. Acceptance criteria are met; task is done.

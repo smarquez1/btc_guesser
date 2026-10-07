@@ -1,7 +1,10 @@
 import { randomUUID } from 'node:crypto';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { mock } from 'node:test';
 import { CreateTableCommand, DeleteTableCommand } from '@aws-sdk/client-dynamodb';
-import { expect, test } from '@playwright/test';
+import { chromium, expect, test } from '@playwright/test';
 import { createServer, type ViteDevServer } from 'vite';
 import { buildApp } from '../../server/app.ts';
 import { loadConfig } from '../../server/config.ts';
@@ -31,12 +34,13 @@ const config = loadConfig({
 });
 const { client } = createDynamoDB(config);
 let tradeId = 0;
+let controlledPrice: number | undefined;
 const app = buildApp(config, async () => {
   tradeId += 1;
 
   return {
     tradeId,
-    price: 60_000 + tradeId,
+    price: controlledPrice ?? 60_000 + tradeId,
     observedAt: Math.floor(Date.now() / 1000),
   };
 });
@@ -87,6 +91,7 @@ test.afterAll(async () => {
 
 test.afterEach(() => {
   mock.timers.reset();
+  controlledPrice = undefined;
 });
 
 test('a correct higher guess earns one persisted point', async ({ page }) => {
@@ -123,7 +128,7 @@ test('a correct higher guess earns one persisted point', async ({ page }) => {
   await expect(higher).toBeDisabled();
   await expect(lower).toBeDisabled();
   await expect(higher).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.getByRole('status')).toContainText('Result in');
+  await expect(page.getByRole('status')).toContainText('Checking begins in');
 
   // Keep the actual 60-second rule and stored deadline; advance both clocks.
   const beforeDeadline = (guess.deadline - 1) * 1000;
@@ -132,7 +137,7 @@ test('a correct higher guess earns one persisted point', async ({ page }) => {
   const pendingResponse = await page.request.get(`/api/guesses/${guess.id}`);
   expect(pendingResponse.ok()).toBe(true);
   expect((await pendingResponse.json()).status).toBe('pending');
-  await expect(page.getByRole('status')).toContainText('Result in 1s.');
+  await expect(page.getByRole('status')).toContainText('Checking begins in 1s.');
   await expect(score).toHaveText('0');
 
   // Also expire any five-second cache refreshed just before the deadline.
@@ -163,4 +168,103 @@ test('a correct higher guess earns one persisted point', async ({ page }) => {
   const profile = await profileResponse.json();
   expect(profile.score).toBe(1);
   expect(profile.pendingGuessId).toBeUndefined();
+});
+
+test('a lower guess survives reopening, waits for a change, and loses one point', async () => {
+  // Move beyond the prior test's cache and keep prices equal until explicitly changed.
+  const startedAt = Date.now() + 300_000;
+  mock.timers.enable({ apis: ['Date'], now: startedAt });
+  controlledPrice = 60_000;
+  const profileDirectory = await mkdtemp(join(tmpdir(), 'btc-guesser-browser-'));
+  let context = await chromium.launchPersistentContext(profileDirectory, { viewport: { width: 1440, height: 900 } });
+
+  try {
+    let page = await context.newPage();
+    await page.clock.setFixedTime(startedAt);
+    await page.goto('http://127.0.0.1:5174');
+    await expect(page.locator('header strong')).toHaveText('0');
+    await expect(page.getByText('$60,000.00', { exact: true })).toBeVisible();
+    const name = await page.locator('header').textContent() ?? '';
+    const submissionResponse = page.waitForResponse(response =>
+      response.url().endsWith('/api/guesses') && response.request().method() === 'POST',
+    );
+    await page.getByRole('button', { name: 'GUESS LOWER' }).click();
+    const submission = await submissionResponse;
+    expect(submission.status()).toBe(201);
+    const guess = await submission.json();
+    expect(guess.direction).toBe('down');
+
+    await expect(page.getByRole('button', { name: 'GUESS HIGHER' })).toBeDisabled();
+    await expect(page.getByRole('button', { name: 'GUESS LOWER' })).toBeDisabled();
+    await expect(page.getByRole('button', { name: 'GUESS LOWER' })).toHaveAttribute('aria-pressed', 'true');
+    const duplicate = await page.request.post('/api/guesses', {
+      data: { direction: 'up' }, headers: { origin: config.appOrigin },
+    });
+    expect(duplicate.status()).toBe(409);
+
+    // Close Chromium itself; the same disk profile retains the HTTP-only identity cookie.
+    await context.close();
+    context = await chromium.launchPersistentContext(profileDirectory, { viewport: { width: 1440, height: 900 } });
+    page = await context.newPage();
+    await page.clock.setFixedTime(startedAt);
+    await page.goto('http://127.0.0.1:5174');
+    await expect(page.locator('header')).toHaveText(name);
+    await expect(page.getByRole('status')).toContainText('Your guess: DOWN.');
+    await expect(page.getByRole('button', { name: 'GUESS LOWER' })).toBeDisabled();
+
+    const equalAt = (guess.deadline + 5) * 1000;
+    mock.timers.setTime(equalAt);
+    await page.clock.setFixedTime(equalAt);
+    const equalResponse = await page.request.get(`/api/guesses/${guess.id}`);
+    expect(equalResponse.ok()).toBe(true);
+    expect((await equalResponse.json()).status).toBe('pending');
+    await expect(page.getByRole('status')).toContainText('Waiting for an eligible price change');
+    await expect(page.locator('header strong')).toHaveText('0');
+    await expect(page.getByRole('button', { name: 'GUESS HIGHER' })).toBeDisabled();
+    await expect(page.getByText('$60,000.00', { exact: true })).toBeVisible();
+    await page.screenshot({ path: 'test-results/desktop-pending.png' });
+
+    controlledPrice = 60_100;
+    const changedAt = equalAt + 6_000;
+    mock.timers.setTime(changedAt);
+    await page.clock.setFixedTime(changedAt);
+    await expect(page.getByRole('status')).toContainText('Incorrect. −1 point.', { timeout: 10_000 });
+    await expect(page.locator('header strong')).toHaveText('-1');
+    await expect(page.getByText('$60,100.00', { exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'GUESS HIGHER' })).toBeEnabled();
+    await expect(page.getByRole('button', { name: 'GUESS LOWER' })).toBeEnabled();
+    await page.getByRole('button', { name: 'GUESS HIGHER' }).focus();
+    await page.keyboard.press('Tab');
+    const lower = page.getByRole('button', { name: 'GUESS LOWER' });
+    await expect(lower).toBeFocused();
+    expect(await lower.evaluate(element => getComputedStyle(element).outlineStyle)).toBe('solid');
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth &&
+      document.documentElement.scrollHeight <= innerHeight)).toBe(true);
+    await page.screenshot({ path: 'test-results/desktop-incorrect.png' });
+
+    const result = await (await page.request.get(`/api/guesses/${guess.id}`)).json();
+    expect(result.correct).toBe(false);
+    expect(result.scoreDelta).toBe(-1);
+    expect(result.finalObservedAt).toBeGreaterThanOrEqual(guess.deadline);
+    await page.reload();
+    await expect(page.locator('header strong')).toHaveText('-1');
+    const profile = await (await page.request.get('/api/players/me')).json();
+    expect(profile.score).toBe(-1);
+    expect(profile.pendingGuessId).toBeUndefined();
+
+    // A controlled HTTP failure checks inline feedback without creating another guess.
+    await page.route('**/api/guesses', route => route.fulfill({
+      status: 503, json: { error: 'BTC price unavailable' },
+    }));
+    await page.getByRole('button', { name: 'GUESS HIGHER' }).click();
+    await expect(page.getByRole('alert')).toContainText('BTC price unavailable');
+    await expect(page.locator('header strong')).toHaveText('-1');
+    await expect(page.getByText('$60,100.00', { exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'GUESS HIGHER' })).toBeEnabled();
+    await expect(page.getByRole('button', { name: 'GUESS LOWER' })).toBeEnabled();
+    await page.screenshot({ path: 'test-results/desktop-error.png' });
+  } finally {
+    await context.close();
+    await rm(profileDirectory, { recursive: true, force: true });
+  }
 });

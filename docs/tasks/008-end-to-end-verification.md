@@ -10,6 +10,9 @@ the rule permutations; verify the critical integrated flow directly with Playwri
 - Verify reload persistence, one clear error state, and the desktop layout. Mobile/tablet verification is out of scope.
 - Record evidence and limitations; do not duplicate the unit-test matrix in browsers.
 - Avoid a broad end-to-end suite or CI setup unless separately requested.
+- Requested desktop extension: verify both directions, incorrect scoring, equal
+  prices remaining pending, blocked duplicate guesses, and browser reopening
+  while pending.
 
 ## Validation and limitations
 
@@ -51,3 +54,27 @@ focused test now; task 007 and the remaining verification criteria stay open.
   in the test), down from about 1.1 minutes overall. No additional dependency or
   production-code change was needed. `git diff --check` passes; no lint,
   typecheck, formatter, other test suites, or commit was run.
+
+## Completed desktop verification on 2026-10-07
+
+- User requested the sad path and the desktop extension above. Added one focused
+  scenario alongside the existing higher/correct scenario; production code is unchanged.
+- A lower guess starts at score zero with both controls disabled and lower selected.
+  A direct authenticated second submission receives 409 from the real backend.
+- Chromium closes completely and relaunches using the same temporary disk profile.
+  Its persisted HTTP-only cookie restores the same player, score, and pending lower guess.
+  The profile is deleted during teardown.
+- At 65 seconds, an equal-price observation leaves the guess pending, score zero,
+  price visible, and controls disabled. After a higher observation and cache expiry,
+  the lower guess resolves incorrectly, score becomes -1, and both controls enable.
+  API evidence and reload confirm the persisted -1 score and cleared pending ID.
+- A browser-intercepted submission 503 verifies inline error feedback, preserved
+  score/price, and enabled controls. Only this error response is intercepted;
+  other requests use Fastify and isolated DynamoDB Local, with a controlled price source.
+- Verified keyboard Tab navigation and visible focus. Reviewed pending, incorrect,
+  and error screenshots at 1440 × 900; layout is readable without page overflow.
+  Screenshots are generated under ignored `test-results/desktop-*.png`.
+- `mise exec -- pnpm test:e2e`: two tests pass in 13.5 seconds overall.
+  No formatter, lint, typecheck, unrelated test suites, or commit was run.
+- All acceptance criteria are met. Live Coinbase and deployed-flow verification
+  remain part of task 009; mobile/tablet and CI remain out of scope.
