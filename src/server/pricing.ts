@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
+import { createDiagnosticSlots } from "./diagnostics.js";
 import type { PricingLog } from "./log.js";
-import { createLogThrottle } from "./throttle.js";
 
 export interface PriceObservation {
   price: string;
@@ -93,23 +93,24 @@ export function createPricingService(options: PricingOptions = {}) {
   let closed = false;
   let started = false;
   let retryAt = 0;
-  const warningThrottle = createLogThrottle(now);
+  const diagnostics = createDiagnosticSlots(now);
   let inflight: Promise<PriceObservation | null> | undefined;
   let cancel: (() => void) | undefined;
   let pollTimer: ReturnType<typeof setTimeout> | undefined;
   function degrade(category: Failure, jobId: string, elapsedMs: number) {
     failed = true;
-    if (!warningThrottle.allow("degraded")) return;
-    options.log?.warn(
-      {
-        category,
-        jobId,
-        elapsedMs,
-        ageMs: lastKnown ? now() - lastKnown.receivedAt : null,
-        retryInMs: Math.max(0, retryAt - now()),
-      },
-      "Pricing degraded",
-    );
+    diagnostics.degraded("degraded", () => {
+      options.log?.warn(
+        {
+          category,
+          jobId,
+          elapsedMs,
+          ageMs: lastKnown ? now() - lastKnown.receivedAt : null,
+          retryInMs: Math.max(0, retryAt - now()),
+        },
+        "Pricing degraded",
+      );
+    });
   }
   function display(): DisplayPricing {
     if (lastKnown && !failed && !isFresh(lastKnown, now()))

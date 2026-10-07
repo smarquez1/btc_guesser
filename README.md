@@ -118,100 +118,43 @@ not add application logs. Automatic request logs are disabled; request/error
 serializers omit client URLs, headers, IPs, names, credentials, and raw errors.
 Seeded-secret logger tests verify categories, correlation, suppression and recovery.
 
-### BTC pricing — T003 handoff
+### Pricing and resolution
 
-The runtime uses unauthenticated `GET
-https://api.exchange.coinbase.com/products/BTC-USD/ticker`. Coinbase `price` is
-retained as an exact string; `time` is the **last trade timestamp**, not a response
-generation timestamp or a promise of freshness. No API key or new environment
-knobs are needed. These are application policies, not Coinbase guarantees:
+Before a guess is accepted, the backend reads the current trusted price from the
+unauthenticated Coinbase Exchange BTC-USD ticker (`GET
+https://api.exchange.coinbase.com/products/BTC-USD/ticker`). The provider's exact
+decimal `price` string is preserved; its `time` is the **last trade timestamp**,
+not a promise of freshness. No API key is needed. Application policies (not
+Coinbase guarantees):
 
 | Policy | Default |
 |---|---|
 | Cache lifetime | 5 seconds (hits never renew receipt time) |
 | Poll interval | 5 seconds after the preceding operation finishes |
 | Provider timeout | 3 seconds total, including body parsing |
-| Failure retry cooldown | 5 seconds after failure; no request-triggered tight retry |
+| Failure retry cooldown | 5 seconds after failure |
 | Trusted server receipt age | At most 15 seconds |
 | Trusted last trade age | At most 120 seconds; at most 5 seconds in the future |
-| Decimal validation | Positive plain decimal, at most 128 characters; no exponent/sign/whitespace |
-| Provider timestamp | Valid UTC ISO date-time with `Z`, optional 1–9 fractional digits; impossible dates rejected |
 
-One process-wide service shares an in-flight operation across routes/polling. A new
-valid HTTP response records a new server receipt even if price and trade time are
-identical; reading the cache never changes it. Polling begins in Fastify's
-`onReady`; `app.close()` aborts the operation and clears timeout/poll timers. The
-timeout settles callers even if a transport ignores abort; late results cannot
-overwrite the cache. An uncooperative transport itself cannot be forcibly stopped.
+Successful player responses add `pricing` (see the API contract above). `fresh`
+means the age policies hold and no failure has occurred since that observation;
+`stale` retains last-known data after a failure or expiry; `unavailable` has
+`observation: null`. Display may round the price but must label stale data and
+must never invent a current price.
 
-Successful responses from all three existing player routes add `pricing`:
-
-```json
-{"status":"fresh","observation":{"price":"63123.123456789","providerTradeAt":"2026-10-06T00:00:00.123456Z","receivedAt":1791244800125}}
-```
-
-`fresh` means both age policies hold and no provider failure has occurred since
-that observation. `stale` retains last-known data after failure/expiry; `unavailable`
-has `observation: null` because no valid data has been obtained. Display may round
-the price, but must label stale data and must not invent a current price. The
-injected trusted callback returns `PriceObservation | null`; display data is a
-separate callback and is never a substitute for trusted data. The default testable
-`buildApp()` has unavailable pricing and does not fetch Coinbase.
-
-For T004, check the trusted observation's **server `receivedAt`** against the guess
-deadline. A pre-deadline cache hit is not eligible, but a newly received identical
-ticker can be. `providerTradeAt` is context/freshness validation, **not** an
-additional deadline condition. `comparePrices` compares differing precision and
-leading zeros exactly without floating-point price conversion. Scoring/resolution
-are not implemented by T003.
-
-Pricing diagnostics use safe generated job IDs, category, elapsed/receipt age,
-and retry delay. Failures/expiry warn at most once per 60 seconds; recovery logs
-info. There are no routine cache-read/poll logs and no raw payloads, external
-exception text, names, or cookies in pricing logs. Deterministic tests inject
-fetch/time, use fake timers, and capture seeded-secret diagnostics; they never
-contact Coinbase. Local checks do not establish live provider/deployment health.
-
-### Guess resolution — T004
-
-Resolution is a pure rule separate from Fastify, storage, and scheduling
-(`src/server/resolution.ts`). A guess is eligible only when server time and the
-trusted observation's `receivedAt` are both at or after `eligibleAt`, and the
-observation is still fresh at decision time; the provider trade timestamp is
-context, not the deadline condition. Full-precision values are compared exactly:
-equal prices keep the guess pending, and the latest fresh observation at check
-time decides `correct` (`+1`) or `incorrect` (`−1`). Stale or
-unavailable observations never resolve a guess, and a move before the deadline
-counts if the price is still different when checked after it.
-
-A bounded in-process resolver (`src/server/resolver.ts`) starts with the app when
-both persistence and pricing are configured. It runs one sweep every 5 seconds
-after the previous sweep settles (never overlapping), discovers due guesses, reads
-one shared trusted observation per sweep, and attempts one conditional write per
-differing guess. The write pins `activeGuess.id`, adds the score delta, clears the
-active guess, and stores the resolved `latestGuess` atomically, so repeated or
-concurrent attempts and obsolete guesses get an expected `ObsoleteGuessConflict`
-and cannot score twice or resolve a replacement. Equal prices and provider
-failures leave the guess pending for a later sweep.
-
-Discovery is a demo-scale DynamoDB scan: one page per sweep with an internal
-cursor that carries across sweeps and restarts. `Limit` bounds evaluated items per
-page (the filter runs after it), so a whole-table sweep costs O(n) per cycle at
-demo scale; no GSI, queue, or Lambda is added. The first sweep after start
-recovers pending guesses from DynamoDB rather than memory, so a backend restart or
-a Render free-tier sleep only delays resolution until the service wakes.
-`app.close()` stops scheduling and awaits in-flight work before pricing closes,
-and the persistence client closes after those hooks settle.
-
-Resolver diagnostics log start/stop, the first recovery sweep, and rate-limited
-degraded/recovered events per operation (discovery, provider, resolution) with
-fixed fields, bounded counts, elapsed time, and retry delay; expected obsolete
-conflicts aggregate at info level. Raw errors, records, identifiers, prices, and
-provider payloads are never logged. `pnpm test:integration` verifies due
-discovery, atomic scoring, and no double counting under concurrent resolution
-against DynamoDB Local; deterministic tests cover timing boundaries, pre-deadline
-moves, equal/stale/unavailable prices, both directions, retries, restart recovery,
-and shutdown without live prices or real-minute waits.
+A guess is resolved by a pure rule (`src/server/resolution.ts`) when server time
+and the trusted observation's **server `receivedAt`** are both at or after
+`eligibleAt` (acceptance + 60s) and the observation is still fresh, comparing
+full-precision values exactly: equal prices keep the guess pending, and the
+latest fresh observation at check time decides `correct` (+1) or `incorrect`
+(−1). A move before the deadline counts if the price is still different when
+checked after it; stale or unavailable observations never resolve. A bounded
+in-process resolver sweeps every 5 seconds, shares one trusted observation per
+sweep, and commits each outcome with one conditional write that pins
+`activeGuess.id`, so concurrent retries cannot score twice. Full policy rationale
+and the demo-scale DynamoDB scan tradeoff are in the
+[technical approach](docs/technical-approach.md); the evidence matrix is in
+[testing](docs/testing.md).
 
 ### Persistence verification
 
@@ -246,8 +189,10 @@ This local check does not verify AWS IAM or deployment.
 Installation enables Lefthook when Git is available. Pre-commit runs serially: Biome's
 safe fixes (`check --write`, never `--unsafe`) on staged TS/TSX/JS/JSX/JSON/CSS
 files and re-stages the fixes, then runs project type checks for TS/TSX/JSON
-changes, followed by `pnpm test` and `pnpm test:integration` on every commit,
-regardless of file type. Integration requires a running loopback DynamoDB Local
+changes, followed by `pnpm test` on every commit and `pnpm test:integration` only
+when the staged files include TS/TSX/JS/JSX/JSON. Documentation-only commits
+(`*.md`) therefore skip integration and do not need a running database.
+Integration requires a running loopback DynamoDB Local
 service and `DYNAMODB_ENDPOINT` configured via `.env` or the environment (see
 local setup above); missing configuration or a stopped service blocks the hook.
 It creates and deletes only a unique test table, not the development table.

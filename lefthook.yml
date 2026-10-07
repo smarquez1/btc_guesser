@@ -15,4 +15,5 @@ pre-commit:
       run: pnpm test
     integration:
       priority: 4
+      glob: "*.{ts,tsx,js,jsx,json}"
       run: pnpm test:integration

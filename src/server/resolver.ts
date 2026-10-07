@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { resolverDiagnostics } from "./diagnostics.js";
 import type { ResolverLog } from "./log.js";
 import {
   type DueGuess,
@@ -7,7 +8,6 @@ import {
 } from "./players.js";
 import type { PriceObservation } from "./pricing.js";
 import { resolveGuess } from "./resolution.js";
-import { resolverDiagnostics } from "./resolver-diagnostics.js";
 
 export const resolverPolicy = { pollMs: 5_000, batchLimit: 100 } as const;
 

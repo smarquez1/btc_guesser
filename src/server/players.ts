@@ -5,7 +5,7 @@ import {
   timingSafeEqual,
 } from "node:crypto";
 import type { FastifyInstance, FastifyRequest } from "fastify";
-import { playerDiagnostics } from "./player-diagnostics.js";
+import { playerDiagnostics } from "./diagnostics.js";
 import type { DisplayPricing, PriceObservation } from "./pricing.js";
 import {
   createRateLimiter,
