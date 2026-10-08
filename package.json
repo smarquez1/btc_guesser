@@ -8,7 +8,8 @@
     "node": ">=22"
   },
   "scripts": {
-    "dev": "vite --host 127.0.0.1",
+    "dev": "pnpm run '/^dev:(client|server)$/'",
+    "dev:client": "vite --host 127.0.0.1",
     "dev:server": "node --env-file=.env --watch --import tsx server/index.ts",
     "build": "pnpm typecheck && vite build",
     "start": "node --env-file-if-exists=.env --import tsx server/index.ts",

@@ -2,6 +2,17 @@
 
 ## Structure and ownership
 
+Production runs on one Render Node web service: Fastify serves the built React
+client from dist alongside /api. NODE_ENV=production enables frontend serving
+and requires dist/index.html to exist. HOST and secure cookies have production
+defaults, while APP_ORIGIN falls back to Render's RENDER_EXTERNAL_URL. Explicit
+configuration wins; custom domains require APP_ORIGIN. See README.md for commands.
+
+DynamoDB remains in AWS us-east-2 with string pk/sk keys and expiresAt TTL.
+AWS_REGION selects the database region, independently of the Render host region.
+Local SSO authentication is separate from deployed credentials. The health
+endpoint checks process availability only, not DynamoDB or Coinbase access.
+
 Keep files focused and create folders only when needed:
 
 - `server/routes/`: HTTP handling and status codes.
@@ -24,8 +35,8 @@ prices, timestamps, deadlines, results, scores, or player state.
 ## Anonymous players
 
 The backend generates an anonymous identifier, which the frontend retains for
-later requests. Validate player identity on the backend. Add cheap rate limiting
-for player creation and TTL/cleanup for ephemeral records. Full authentication
+later requests. Validate player identity on the backend. Player creation has no
+rate limit; use TTL/cleanup for ephemeral records. Full authentication
 is out of scope unless explicitly required.
 
 ## Prices and caching
@@ -91,7 +102,6 @@ current access patterns:
 | --- | --- | --- | --- |
 | Player | `PLAYER#<id>` | `PROFILE` | Validate identity; read score and pending guess ID |
 | Guess | `GUESS#<id>` | `DETAILS` | Read pending state or saved result by ID |
-| Creation limit | `PLAYER_LIMIT#<SHA-256 of connection IP>` | `<UTC hour start>` | Atomically allow ten creation attempts per hour |
 | Price cache | `PRICE#BTC-USD` | `LATEST` | Read/update the shared observation |
 
 Players retain their score and have no TTL. Ephemeral records use `expiresAt`
@@ -123,14 +133,11 @@ consistently from DynamoDB, returning 401 for missing or unknown identities.
 Creation accepts no state fields and checks supplied browser Origin against
 `APP_ORIGIN`; explicit cross-site requests are rejected.
 
-Creation limits use conditional DynamoDB updates, allowing ten attempts per
-connection IP per fixed UTC hour across processes. Only a SHA-256 IP hash is
-stored. Counter keys include the hour, so old records cannot block new windows
-even before TTL cleanup. `expiresAt` is two hours after the window start; player
-profiles have no TTL. A failed profile write can consume a limit attempt.
-Forwarded headers are not trusted; proxy configuration belongs to deployment.
+Player creation writes the profile directly without an IP-based limit or counter.
+Player profiles have no TTL. Forwarded headers are not trusted.
 Cookie loss has no identity recovery. Clearing cookies can create additional
-players within the creation limit, an accepted limitation of anonymous play.
+players, an accepted limitation of anonymous play. Legacy PLAYER_LIMIT records
+are no longer read or written and expire through their existing TTL.
 
 ## Implemented pricing API
 

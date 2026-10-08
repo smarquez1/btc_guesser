@@ -1,18 +1,17 @@
 # BTC Guesser
 
-The project folder is `btc_guesser`; the package name is `btc-guesser`.
+Guess whether BTC/USD will rise or fall after 60 seconds. Correct guesses earn
+one point; incorrect guesses lose one. Equal prices stay pending. Player identity
+and scores persist across reloads using an HTTP-only cookie and DynamoDB.
 
-The backend provides a health endpoint, anonymous player identities, Coinbase BTC/USD pricing, guess submission and resolution, and local DynamoDB setup. The React game UI and focused desktop browser verification are complete; deployment is next. The UI guide is in [docs/ui.pen](docs/ui.pen); implementation tasks and status are tracked in [docs/tasks/index.md](docs/tasks/index.md).
+**[Play the game](https://btc-guesser.onrender.com)** · Desktop only
 
-The frontend uses React, TypeScript, Vite, and Tailwind CSS with semantic native
-HTML. Keep markup and styling minimal; small amounts of plain CSS are fine.
-The mockup guides layout and game states, without requiring exact visual matching.
-Task 006 retains Tailwind and removes unused shadcn configuration and dependencies.
-No UI component library is needed.
+React, TypeScript, Vite, and Tailwind frontend; Fastify backend with DynamoDB and
+Coinbase's public price API. One Render web service serves the frontend and API.
 
-## Development tools
+## Run locally
 
-Tool versions are recorded in `.tool-versions` for mise. Node and pnpm match versions already installed locally.
+Requires [mise](https://mise.jdx.dev/) and Docker. Versions are pinned in `.tool-versions`.
 
 ```sh
 mise install
@@ -22,281 +21,99 @@ docker compose up -d
 mise exec -- pnpm db:create
 ```
 
-Docker Compose runs DynamoDB Local on `127.0.0.1:8000` with a persistent named
-volume. Stop it with `docker compose down`; the data remains for the next start.
-If port 8000 is occupied, run `DYNAMODB_LOCAL_PORT=8001 docker compose up -d`
-and set `DYNAMODB_ENDPOINT=http://127.0.0.1:8001` in `.env`.
-The local credentials in `.env.example` are placeholders, not AWS credentials.
+Keep `.env` local. Its AWS credentials are placeholders for DynamoDB Local.
+`db:create` creates the local table and enables TTL; it is safe to rerun.
 
-`.env` is required for backend startup, database setup, and integration tests.
-These commands fail immediately if it is missing. Keep the file local; Git ignores it.
-
-`db:create` uses the endpoint configured in `.env`, creates the table if missing,
-checks its string `pk`/`sk` keys, and enables `expiresAt` TTL. It is safe to rerun
-and refuses to run without an explicit endpoint. See [the storage model](docs/backend.md#storage-model).
-
-Start the backend and frontend in separate terminals:
+Start the frontend and backend together:
 
 ```sh
-mise exec -- pnpm dev:server
 mise exec -- pnpm dev
 ```
 
-Open the frontend at `http://127.0.0.1:5173`, matching `APP_ORIGIN` in
-`.env.example`. If an existing `.env` uses `http://localhost:5173`, update it to
-the same origin and restart the backend. Origin checks compare the exact host.
+Keep DynamoDB Local running. To run either process separately, use
+`pnpm dev:client` or `pnpm dev:server`. Stop the combined command with Ctrl+C.
 
-Check `http://127.0.0.1:3000/api/health` for `{ "status": "ok" }`. This is a
-process health check, not a DynamoDB readiness check. Vite proxies `/api` to
-port 3000; update `vite.config.ts` if you change the backend port.
+Open **http://127.0.0.1:5173**, matching `APP_ORIGIN` in `.env`. Vite proxies `/api`
+to the backend on port 3000. `localhost` and `127.0.0.1` are different origins.
 
-The backend validates configuration before listening. `PORT` defaults to 3000,
-`HOST` to `127.0.0.1`, and `COOKIE_SECURE` to false in development. With
-`NODE_ENV=production`, the host defaults to `0.0.0.0` and secure cookies default
-to true. `AWS_REGION` and `DYNAMODB_TABLE` are required. `APP_ORIGIN` must be a
-browser origin without a path; in production it defaults to Render's supplied
-`RENDER_EXTERNAL_URL`. Explicit `HOST`, `COOKIE_SECURE`, and `APP_ORIGIN` values
-override these defaults. Set `APP_ORIGIN` explicitly when using a custom domain.
+DynamoDB Local runs on port 8000. If occupied, start it with
+`DYNAMODB_LOCAL_PORT=8001 docker compose up -d` and update `DYNAMODB_ENDPOINT` in
+`.env`. `docker compose down` stops it while preserving data.
 
-Build the client and run the backend:
+## Deploy on Render
 
-```sh
-mise exec -- pnpm build
-mise exec -- pnpm start
-```
+Create a **Node Web Service** connected to this repository's `main` branch.
 
-Set `NODE_ENV=production` to serve the built client from `dist` alongside the
-API. `pnpm start` loads `.env` when present and also supports platform-provided
-environment variables without that file. For AWS, omit `DYNAMODB_ENDPOINT`
-and the local credential placeholders, and use the normal AWS credential chain.
-Do not use `db:create` to provision deployed infrastructure.
+| Setting | Value |
+| --- | --- |
+| Build command | `corepack pnpm install --frozen-lockfile --prod=false && corepack pnpm build` |
+| Start command | `corepack pnpm start` |
+| Health check | `/api/health` |
+| Root directory, pre-deploy command, build filters | Leave blank |
 
-## Render deployment
-
-Deploy one Node web service from this repository, with the repository root as
-its root directory. `.node-version` pins Node to the local mise version.
-
-- Build command: `corepack enable && pnpm install --frozen-lockfile --prod=false && pnpm build`
-- Start command: `pnpm start`
-- Health check path: `/api/health`
-
-Configure these environment variables in Render:
+Set these environment variables:
 
 | Variable | Value |
 | --- | --- |
 | `NODE_ENV` | `production` |
-| `AWS_REGION` | `us-east-2` |
+| `AWS_REGION` | `us-east-2` (DynamoDB's region) |
 | `DYNAMODB_TABLE` | `btc-guesser` |
+| `AWS_ACCESS_KEY_ID` | Dedicated IAM user's access key |
+| `AWS_SECRET_ACCESS_KEY` | Dedicated IAM user's secret key |
 
-The production defaults handle the host, secure cookies, and Render origin.
-Use Render's automatically supplied `PORT`. Omit `DYNAMODB_ENDPOINT`,
-`AWS_PROFILE`, and all local credential placeholders. Do not upload `.env`.
+Render Hobby uses an IAM user restricted to `GetItem`, `PutItem`, and `UpdateItem`
+on the application table. Keep keys in Render only. Do not upload `.env` or set
+`AWS_PROFILE` or `DYNAMODB_ENDPOINT` there.
 
-AWS access must be configured separately before game requests work. Render's
-[managed OIDC](https://render.com/docs/oidc) requires a Pro workspace or higher;
-set `AWS_ROLE_ARN` after configuring the AWS provider and a restricted role.
-On Hobby, use a dedicated IAM user's access key stored only in Render's secret
-environment variables (`AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`).
-Neither option should use root credentials or the developer's SSO session.
-Restrict access to this application's DynamoDB table and required item operations.
+The AWS table requires string keys `pk` (partition) and `sk` (sort), and TTL on
+`expiresAt`. No indexes are needed. Provision it separately; `db:create` is local only.
 
-Keep the frontend and API on the same Render service for same-origin cookies.
-The health endpoint checks the process only; verify `/api/price`, player creation,
-guess resolution, and score persistence after deployment. Deployment verification
-is still pending in task 009. Proxy trust remains disabled, so player-creation
-limits may be shared among visitors behind Render's proxy.
+Production serves `dist` and rejects a missing build. It defaults to host
+`0.0.0.0`, secure cookies, and Render's supplied URL as the allowed origin.
+Render supplies `PORT`; `.node-version` pins Node. Set `APP_ORIGIN` for a custom
+domain. Explicit `HOST`, `COOKIE_SECURE`, and `APP_ORIGIN` override defaults.
 
-## Anonymous players
+After deploying, check `/api/price`, submit a guess, wait for resolution, and
+reload to confirm the score persists. `/api/health` checks the process only.
 
-`POST /api/players` takes no fields (omit the body or send `{}`). It creates a
-player with a generated name and persisted score of zero, returning 201. An
-existing valid cookie returns that same player with 200. `GET /api/players/me`
-returns the persisted profile. Responses contain `name`, `score`, `createdAt`
-(epoch seconds), and `pendingGuessId` when present; identity tokens are omitted.
-
-The browser retains the opaque identity in the `btc_player` cookie, scoped to
-`/api`, HTTP-only, SameSite Strict, and valid for one year. Frontend requests use
-the same-origin `/api` proxy; JavaScript does not need to read the token. Invalid,
-unknown, or missing identities return 401 on profile reads. Creation with an
-invalid cookie returns 401 and clears it; a subsequent creation can start fresh.
-Losing the cookie loses access to that player's score; recovery is out of scope.
-
-Creation rejects supplied player fields with 400 and foreign browser origins
-with 403. New identities are limited to ten creation attempts per source IP per
-UTC hour using an atomic DynamoDB counter. Exceeding the limit returns 429 with
-`Retry-After`; returning players do not consume attempts. Failed database writes
-return a safe 500 and may consume an attempt. Rate-limit records use TTL; player
-profiles retain their score without TTL.
-
-Fastify currently uses the connection IP and does not trust forwarded headers.
-The Vite proxy can therefore share one limit among local browsers. Deployment
-must configure a trusted proxy deliberately if individual client limits are
-needed behind a load balancer. Never blindly trust client-supplied forwarded IPs.
-
-## BTC/USD pricing
-
-`GET /api/price` needs no player identity and returns:
-
-```json
-{ "symbol": "BTC-USD", "price": 83441.34, "observedAt": 1791393486, "stale": false }
-```
-
-The backend calls the public [Coinbase Exchange ticker](https://docs.cdp.coinbase.com/api-reference/exchange-api/rest-api/products/get-product-ticker)
-with a five-second timeout and validates the response. `observedAt` is the last
-trade's timestamp in integer epoch seconds, preserved across all cache reads.
-No Coinbase API key is required.
-
-DynamoDB stores the shared latest observation, with a five-second freshness
-window measured from the successful fetch and one-hour retention from `observedAt`. Fresh reads avoid
-Coinbase. Missing or stale cache entries trigger a refresh. Conditional writes
-order observations by Coinbase trade ID, including trades within the same second.
-Fetching the same trade again can extend freshness without changing `observedAt`;
-cache reads alone never extend freshness. Trade IDs stay internal to the cache. HTTP responses use `Cache-Control: no-store`.
-
-If Coinbase fails or returns an observation older than retention, the API returns
-an available cached observation with its original timestamp and freshness flag.
-A stale fallback has `stale: true`; it expires after one hour even if DynamoDB
-has not deleted its TTL record. Without an available observation the response is
-503 with `{ "error": "BTC price unavailable" }` and `Retry-After: 5`. DynamoDB
-failures return safe 500 responses. Cache freshness does not establish whether
-an observation is eligible to resolve a guess; resolution checks its timestamp.
-
-## Guesses
-
-`POST /api/guesses` accepts only `{ "direction": "up" }` or
-`{ "direction": "down" }` with the player's cookie. It returns 201 with the
-guess ID, direction, pending status, starting price and observation time,
-`startedAt`, and `deadline` (60 seconds after submission). All times are integer
-epoch seconds set by the backend. Submission requires a fresh cached or fetched
-price; unavailable or stale pricing returns 503 with `Retry-After: 5`.
-Invalid fields return 400, invalid identity 401, foreign origins 403, and an
-existing pending guess 409. Creation atomically stores the guess and sets the
-player's pending ID, so concurrent submissions cannot both succeed.
-
-`GET /api/guesses/:id` returns the authenticated player's guess and lazily
-resolves it when an observation at or after its deadline differs from the
-starting price. Early observations and equal prices leave it pending. Source
-timestamps establish eligibility independently of freshness. An upstream outage
-without an available observation leaves the guess pending; storage failures
-return safe 500 responses. Unknown, expired, or another player's guesses return
-404. Responses omit identity and storage fields and disable HTTP caching.
-
-A resolved response also includes `finalPrice`, `finalObservedAt`, `resolvedAt`,
-`correct`, and `scoreDelta` (+1 or -1). The result, score update, and removal of
-the pending ID commit together exactly once. Read `/api/players/me` afterward
-for the current score. Poll the pending guess before submitting another guess;
-submission itself does not resolve an existing one. Pending guesses never
-expire; resolved evidence expires after 24 hours, while scores remain persisted.
-
-## Project MCP servers
-
-The configuration is supplied in `codex-mcp.toml`. This environment prevents creating `.codex/config.toml`, so enable it locally with:
-
-```sh
-mkdir -p .codex
-cp codex-mcp.toml .codex/config.toml
-```
-
-If you already have a project configuration, merge the MCP entries into it instead of replacing it. Restart Codex with this project trusted, then check `/mcp`.
-
-- The UI uses native HTML and Tailwind CSS; no shadcn MCP is needed.
-- [AWS API MCP](https://awslabs.github.io/mcp/servers/aws-api-mcp-server) inspects DynamoDB and deployment resources. `READ_OPERATIONS_ONLY=true` restricts AWS API calls to read operations; IAM permissions still apply.
-
-AWS MCP expects the `awslabs.aws-api-mcp-server` executable to be installed separately and available on PATH. It is not managed by this project. Install it in an external Python environment with Python 3.10+ using `python -m pip install awslabs.aws-api-mcp-server`.
-
-AWS MCP uses the local AWS credential chain. Configure credentials outside the repository and launch Codex with your intended profile and region:
-
-```sh
-aws configure sso --profile btc-guess
-aws sso login --profile btc-guess
-AWS_PROFILE=btc-guess AWS_REGION=us-east-1 codex
-```
-
-Replace the example profile and region with your own. Never store credentials in project configuration. For the app or IDE, ensure its environment has the intended AWS profile and region before restarting it. The application's `.env` is not automatically loaded by MCP.
-
-## Checks before commits
-
-Lefthook runs Biome on staged source files, TypeScript (`tsc --noEmit`) on the whole project, all unit and DynamoDB integration tests, and the production build before each commit, without rewriting files. DynamoDB Local must be running. Integration tests load `DYNAMODB_ENDPOINT` from `.env`, copied from `.env.example`; update it there when using a different local port. `pnpm install` installs the hook through the project's `prepare` script. To install it manually:
-
-```sh
-pnpm exec lefthook install
-```
-
-Before committing, check the entire project with:
-
-```sh
-pnpm lint
-pnpm typecheck
-```
-
-The workflow is implementation, user approval, requested tests, then commit.
-Do not add tests before the user requests them. Formatting is not part of the commit hook. Add and run unit tests when the
-developer asks, before committing related work. The hook runs both test suites.
-
-## Tests
+## Checks
 
 ```sh
 mise exec -- pnpm test
-```
-
-This runs deterministic configuration, player, Coinbase-client, and pricing unit
-tests plus guess lifecycle/retry coverage and Fastify route integration tests using injection, without a listening
-server or external services. Pricing tests cover source validation, fetch-based
-freshness, unchanged tickers, expiry, stale fallback, and safe error responses. Player coverage includes identity validation, initial scores, cookie
-security, input/origin rejection, throttling, and safe database error responses.
-
-Frontend coverage uses Node's test runner, jsdom, React `act`, controlled fetch
-responses, and fake clocks. It covers API errors and identity recovery, pending
-guess recovery across tabs, duplicate submissions, stale-response rejection,
-uncertain submission recovery, Strict Mode cancellation, polling cleanup and
-retries, countdowns, and clearing result price colors on newer observations.
-These tests use no real network calls, database, browser, or timed waits.
-
-For real DynamoDB integration tests, start the local container and set
-`DYNAMODB_ENDPOINT` in `.env` to its loopback endpoint (port 8000 in
-`.env.example`):
-
-```sh
 mise exec -- pnpm test:integration
+mise exec -- pnpm build
 ```
 
-Use port 8001 if configured above. Tests share the local DynamoDB instance with
-the app but create uniquely named temporary tables and delete them afterward;
-they reject nonlocal endpoints and do not use the application table or AWS
-credentials. They verify table setup, reruns, incompatible keys/TTL, document reads/writes,
-player persistence across app instances, conditional profile creation, concurrent
-creation limits, hourly rollover while old TTL records still exist, concurrent
-price writes ordered by trade ID, unchanged-trade freshness updates, and explicit
-price expiry before TTL cleanup. Guess coverage verifies concurrent submission
-and resolution across app instances, exactly-once positive/negative scoring,
-observation eligibility, ownership, transaction rollback, and resolved evidence
-expiry before TTL cleanup.
-For the focused Playwright happy-path test, keep DynamoDB Local running and
-configure its loopback `DYNAMODB_ENDPOINT` in `.env`, then run:
+Integration tests require DynamoDB Local and `.env`. They use isolated temporary
+tables and reject nonlocal endpoints. If `.env` points at AWS, override the endpoint
+with `DYNAMODB_ENDPOINT=http://127.0.0.1:8000` for integration tests and commits.
+
+For desktop browser tests, keep DynamoDB Local running and ports 3001 and 5174 free:
 
 ```sh
 mise exec -- pnpm exec playwright install chromium
 mise exec -- pnpm test:e2e
 ```
 
-The test starts its own Vite frontend on port 5174 and backend on port 3001;
-leave those ports free. It creates and deletes a unique temporary DynamoDB table
-and uses local placeholder credentials, leaving application data untouched.
-Chromium runs at 1440 × 900. The test creates an anonymous player, submits a
-higher guess, advances test clocks through the 60-second deadline, verifies a correct result and
-score +1, then reloads to confirm identity and score persistence. Only the Coinbase
-price source is controlled to produce increasing prices; browser requests,
-backend rules, caching, transactions, and DynamoDB persistence are real.
-Node's built-in mock clock controls backend dates, and Playwright's clock controls
-browser dates. Network and polling timers remain real. The test confirms pending
-at 59 seconds, then advances to 65 seconds to allow any pre-deadline five-second
-price cache to expire before resolution. Game rules and stored deadlines are unchanged.
-It runs in seconds. Failure traces are saved under ignored `test-results/`.
-The second scenario submits a lower guess, checks duplicate rejection, closes
-and relaunches Chromium with the same temporary profile while pending, verifies
-equal prices remain pending after the deadline, and confirms incorrect scoring
-and persistence at -1. It also checks keyboard focus, desktop overflow, and an
-inline submission error using an intercepted 503 response. Other requests use
-the real backend and isolated local table; the price source and dates are controlled.
-Pending/result/error screenshots are saved under ignored `test-results/`.
-No CI or broad browser suite is configured.
+Browser tests cover correct/incorrect guesses, pending recovery, equal prices,
+errors, and persistence with real backend/storage interactions and controlled
+prices and clocks. Traces and screenshots go under ignored `test-results/`.
+
+Before committing, run `mise exec -- pnpm lint` and `mise exec -- pnpm typecheck`.
+Lefthook also runs staged lint, typecheck, unit/integration tests, and the build.
+It does not format files.
+
+## Design and limitations
+
+The backend owns prices, timestamps, validation, and scoring. Conditional DynamoDB
+transactions enforce one pending guess and apply each score change exactly once.
+Results resolve when polled; no worker or queue is needed. Coinbase needs no API key.
+
+Anonymous identities have no recovery after cookie loss. Player creation has no
+rate limit. Scores persist; resolved guesses expire after 24 hours. Mobile/tablet
+support and CI are outside the assignment's scope.
+
+- [Backend and API details](docs/backend.md)
+- [UI guide](docs/ui.md) and [mockup](docs/ui.pen)
+- [Developer tools and AWS access](docs/tools.md)
+- [Task status and validation](docs/tasks/index.md)

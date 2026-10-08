@@ -262,10 +262,10 @@ test('player API persists identities across app instances and rejects duplicate 
   assert.equal(unknown.statusCode, 401);
 });
 
-test('creation limit is atomic across app instances and ignores old counters before TTL deletion', async (t) => {
+test('concurrent player creation succeeds across app instances', async (t) => {
   const tableName = `btc-guess-test-${randomUUID()}`;
   const config = loadConfig({ ...environment, DYNAMODB_TABLE: tableName });
-  const { client, documentClient } = createDynamoDB(config);
+  const { client } = createDynamoDB(config);
   const apps = [buildApp(config), buildApp(config)];
   t.after(async () => {
     await Promise.all(apps.map((app) => app.close()));
@@ -284,31 +284,12 @@ test('creation limit is atomic across app instances and ignores old counters bef
     }),
   ));
 
-  assert.equal(responses.filter((response) => response.statusCode === 201).length, 10);
-  assert.equal(responses.filter((response) => response.statusCode === 429).length, 6);
+  assert.equal(responses.filter((response) => response.statusCode === 201).length, 16);
+  assert.equal(new Set(responses.map((response) => response.headers['set-cookie'])).size, 16);
   const otherAddress = await apps[0].inject({
     method: 'POST', url: '/api/players', remoteAddress: '127.0.0.3',
   });
   assert.equal(otherAddress.statusCode, 201);
-
-  const repository = playerRepository(documentClient, tableName);
-  const windowStart = 1800000000;
-  const hash = 'window-boundary-check';
-  for (let attempt = 0; attempt < 10; attempt++) {
-    assert.equal(await repository.consumeCreationAttempt(hash, windowStart), true);
-  }
-  assert.equal(await repository.consumeCreationAttempt(hash, windowStart + 3599), false);
-  assert.equal(await repository.consumeCreationAttempt(hash, windowStart + 3600), true);
-  assert.equal(await repository.consumeCreationAttempt(hash, windowStart + 7200), true);
-  const oldCounter = await documentClient.send(new GetCommand({
-    TableName: tableName,
-    Key: { pk: `PLAYER_LIMIT#${hash}`, sk: String(windowStart) },
-    ConsistentRead: true,
-  }));
-
-  assert.equal(oldCounter.Item?.attempts, 10);
-  assert.equal(oldCounter.Item?.expiresAt, windowStart + 7200);
-  assert.ok(Number.isInteger(oldCounter.Item?.expiresAt));
 });
 
 

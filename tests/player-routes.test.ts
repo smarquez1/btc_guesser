@@ -19,7 +19,7 @@ function setup() {
   const app = buildApp();
   const players = {
     find: async (identity: string | undefined) => identity === player.id ? player : undefined,
-    create: async (_address: string): Promise<typeof player | undefined> => player,
+    create: async (): Promise<typeof player> => player,
   };
   app.register(cookie);
   app.register(playerRoutes, { config, players });
@@ -28,13 +28,8 @@ function setup() {
 }
 
 test('creation sets a secure opaque cookie and excludes identity from JSON', async (t) => {
-  const { app, players } = setup();
+  const { app } = setup();
   t.after(() => app.close());
-  players.create = async (address) => {
-    assert.equal(address, '127.0.0.2');
-
-    return player;
-  };
   const response = await app.inject({
     method: 'POST', url: '/api/players', remoteAddress: '127.0.0.2',
     headers: { origin: config.appOrigin }, payload: {},
@@ -52,7 +47,7 @@ test('creation sets a secure opaque cookie and excludes identity from JSON', asy
   assert.ok(header.startsWith(`btc_player=${player.id};`));
 });
 
-test('returning players reuse persisted state without consuming creation attempts', async (t) => {
+test('returning players reuse persisted state without creating a new player', async (t) => {
   const { app, players } = setup();
   t.after(() => app.close());
   players.create = async () => { throw new Error('unexpected creation'); };
@@ -109,18 +104,6 @@ test('creation rejects client state and cross-site requests before storage', asy
 
     assert.equal(response.statusCode, 403);
   }
-});
-
-test('throttling returns a retry time and no identity cookie', async (t) => {
-  t.mock.method(Date, 'now', () => 1800000000000);
-  const { app, players } = setup();
-  t.after(() => app.close());
-  players.create = async () => undefined;
-  const response = await app.inject({ method: 'POST', url: '/api/players' });
-
-  assert.equal(response.statusCode, 429);
-  assert.equal(Number(response.headers['retry-after']), 3600);
-  assert.equal(response.headers['set-cookie'], undefined);
 });
 
 test('player database errors return safe 500 responses', async (t) => {

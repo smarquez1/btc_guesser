@@ -13,7 +13,7 @@ const environment = {
 test('example browser origin matches the frontend development host', () => {
   const example = parseEnv(readFileSync(new URL('../.env.example', import.meta.url), 'utf8'));
   const manifest = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
-  const host = manifest.scripts.dev.match(/--host\s+(\S+)/)?.[1];
+  const host = manifest.scripts['dev:client'].match(/--host\s+(\S+)/)?.[1];
 
   assert.equal(host, '127.0.0.1');
   assert.equal(loadConfig(example).appOrigin, `http://${host}:5173`);

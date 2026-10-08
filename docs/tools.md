@@ -4,6 +4,21 @@ Use tools deliberately.
 
 Do not call MCP servers merely because they are available.
 
+## AWS CLI access
+
+Authenticate with the intended local SSO profile:
+
+```sh
+aws configure sso --profile btc-guesser
+aws sso login --profile btc-guesser
+AWS_PROFILE=btc-guesser AWS_REGION=us-east-2 aws dynamodb list-tables
+```
+
+Use sa-east-1 for the SSO region.
+Repeat SSO login if the token expires. To run the backend locally against AWS,
+remove the local endpoint and placeholder credentials from .env, set the AWS
+table/region, and run AWS_PROFILE=btc-guesser mise exec -- pnpm dev:server.
+
 ## Context7
 
 Use Context7 when current library documentation matters.
@@ -31,7 +46,12 @@ For pen.dev and Playwright workflows, read [ui.md](ui.md).
 
 ## AWS
 
-Use the official AWS tooling for deployed AWS resources.
+The application host is Render; AWS hosts DynamoDB. Use the Render dashboard
+for host settings and secrets, and AWS tooling for table and IAM inspection.
+The local SSO profile is btc-guesser, Identity Center region sa-east-1, and
+DynamoDB region us-east-2. Never copy SSO tokens or local .env into Render.
+
+Use the AWS CLI for deployed AWS resources.
 
 Good uses include:
 
@@ -49,11 +69,3 @@ Do not use AWS tooling as a replacement for reproducible repository configuratio
 Do not create AWS infrastructure merely because the tooling makes it easy.
 
 Changes required to deploy or run the project should remain understandable from source control.
-
-## DynamoDB MCP
-
-Do not add a separate DynamoDB MCP server by default.
-
-Use AWS tooling plus current DynamoDB documentation for routine work.
-
-Only consider a dedicated DynamoDB MCP if the data model becomes complex enough that specialized access-pattern modeling provides meaningful value.

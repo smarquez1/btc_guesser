@@ -60,13 +60,7 @@ export const playerRoutes: FastifyPluginAsync<{
       return player;
     }
 
-    const player = await players.create(request.ip);
-
-    if (!player) {
-      reply.header('Retry-After', 3600 - Math.floor(Date.now() / 1000) % 3600);
-
-      return reply.code(429).send({ error: 'Player creation limit reached' });
-    }
+    const player = await players.create();
 
     reply.setCookie(cookieName, player.id, cookieOptions);
 

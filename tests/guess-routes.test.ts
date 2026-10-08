@@ -23,7 +23,7 @@ function setup() {
   const players = {
     find: async (identity: string | undefined): Promise<Player | undefined> => identity === id
       ? { id: 'private', name: 'Player', score: 0, createdAt: 1 } : undefined,
-    create: async (): Promise<Player | undefined> => undefined,
+    create: async (): Promise<Player> => { throw new Error('unexpected creation'); },
   };
   const guesses: ReturnType<typeof guessService> = {
     submit: async () => ({ outcome: 'created', guess: pending }),

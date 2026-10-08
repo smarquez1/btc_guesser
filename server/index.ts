@@ -1,3 +1,4 @@
+import { access } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import fastifyStatic from '@fastify/static';
 import { buildApp } from './app.ts';
@@ -8,9 +9,10 @@ try {
   const app = buildApp(config);
 
   if (process.env.NODE_ENV === 'production') {
-    app.register(fastifyStatic, {
-      root: resolve(import.meta.dirname, '../dist'),
-    });
+    const clientRoot = resolve(import.meta.dirname, '../dist');
+    await access(resolve(clientRoot, 'index.html'));
+
+    app.register(fastifyStatic, { root: clientRoot });
   }
 
   for (const signal of ['SIGINT', 'SIGTERM'] as const) {

@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import type { playerRepository } from '../repositories/players.ts';
 import type { Player } from '../types/player.ts';
 
@@ -12,13 +12,8 @@ export function playerService(repository: ReturnType<typeof playerRepository>) {
       return repository.get(identity);
     },
 
-    async create(address: string): Promise<Player | undefined> {
+    async create(): Promise<Player> {
       const now = Math.floor(Date.now() / 1000);
-      const addressHash = createHash('sha256').update(address).digest('hex');
-      const allowed = await repository.consumeCreationAttempt(addressHash, now);
-
-      if (!allowed) return undefined;
-
       const id = randomUUID();
       const player = { id, name: `Player ${id.slice(0, 8)}`, score: 0, createdAt: now };
       await repository.create(player);

@@ -73,7 +73,10 @@ The backend owns validation, timestamps, prices, caching, resolution, and persis
 
 ## Scope and security
 
-Use anonymous identity with backend validation, cheap player-creation rate limiting, and TTL for ephemeral records. Never commit credentials or local environment files; document placeholders in `.env.example` and ignore secrets and generated output.
+Use anonymous identity with backend validation and TTL for ephemeral records.
+Player creation has no rate limit, per the user's simplification request. Never
+commit credentials or local environment files; document placeholders in
+`.env.example` and ignore secrets and generated output.
 
 Avoid Redux, Zustand, queues, microservices, DI frameworks, generic repositories, custom design systems, and full authentication unless explicitly required. Prefer native HTML controls and browser behavior; keep CSS focused on layout, readability, focus, and game-state feedback.
 
@@ -88,6 +91,19 @@ Avoid Redux, Zustand, queues, microservices, DI frameworks, generic repositories
 - Defer end-to-end tests to the final verification task. Use Playwright for direct verification of meaningful UI changes. CI remains deferred unless explicitly requested.
 - Use focused commits with short imperative subjects. PRs explain purpose, link relevant issues, report validation and limitations, and include screenshots for visible changes.
 
+## Deployment configuration
+
+- Host the frontend and API together on one Render Node web service. Keep
+  DynamoDB on AWS; do not introduce a separate frontend host or migrate storage.
+- Follow README.md for Render commands and environment settings.
+- Production serves dist and must fail startup if the frontend build is missing.
+  Keep .node-version aligned with the Node version in .tool-versions.
+- Keep local SSO credentials separate from Render's dedicated IAM user. Restrict
+  deployed permissions to the application table; store credentials only in Render.
+- Keep proxy trust disabled; player creation does not depend on visitor IPs.
+- When .env points at AWS, override DYNAMODB_ENDPOINT with the running DynamoDB
+  Local endpoint for integration checks and commits. Never run tests against AWS.
+
 ## Task tracking
 
 - Keep tasks as numbered Markdown files under `docs/tasks/`.
@@ -99,12 +115,15 @@ Avoid Redux, Zustand, queues, microservices, DI frameworks, generic repositories
 
 ## Task-specific guidance
 
-The approved UI guide is [docs/ui.pen](docs/ui.pen), containing 16:10 ready and success mockups of one game screen. Inspect it with pen.dev before UI implementation. Treat its visual details as guidelines, not exact implementation requirements; prefer simple semantic HTML and minimal Tailwind styling over reproducing the mockup. Keep the UI minimal: black, white, neutral grays, square buttons, and bottom help text. Reserve green/red for the price after a correct/incorrect guess. Show the server-generated player name beside the score (Steve is only the mockup example). Keep both direction buttons visible, disable them while pending with the selected direction highlighted, and re-enable them after resolution. Show countdowns, results, loading, and errors inline; do not add separate game-state screens or a Try again action.
+Inspect [docs/ui.pen](docs/ui.pen) with pen.dev before major UI changes. Its 16:10
+mockups are loose layout guides. Use black, white, neutral grays, square buttons,
+and bottom help text. Show the server-generated name beside the score.
 
-Direction-button update: use uppercase `GUESS HIGHER` in green and `GUESS LOWER`
-in red. Fill the selected button with its direction color while pending, keeping
-the other outlined. This supersedes the mockup's neutral-button styling and the
-restriction above reserving green/red only for resolved prices.
+Keep both direction buttons visible: green `GUESS HIGHER` and red `GUESS LOWER`.
+While pending, disable both and fill the selected button with its direction color;
+keep the other outlined. Re-enable both after resolution. Color the result price
+green/red for correct/incorrect guesses. Show countdowns, results, loading, and
+errors inline; do not add separate state screens or a Try again action.
 
 Read the relevant document before making changes:
 

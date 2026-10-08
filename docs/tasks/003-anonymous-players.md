@@ -7,10 +7,15 @@ Read docs/backend.md. Implement anonymous player creation and identity validatio
 - New players start with a score of zero persisted in DynamoDB.
 - Returning players can reuse a backend-validated identity.
 - Invalid identities receive explicit, safe errors.
-- Player creation has cheap rate limiting; ephemeral records use TTL.
+- Player creation has no rate limit (user-requested simplification on 2026-10-08).
 - Client-provided scores and player state are never authoritative.
 
 ## Validation and limitations
+
+The original rate-limit implementation and its validation below are historical.
+On 2026-10-08 the user requested its removal. Creation now writes profiles
+directly without IP hashing or counters. Relevant existing tests were updated;
+unit and DynamoDB Local integration validation pass for the removal.
 
 - Implemented `POST /api/players` and `GET /api/players/me`, focused route,
   service, repository, response schema, and shared player type. Startup wires the

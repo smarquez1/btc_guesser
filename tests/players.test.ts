@@ -9,7 +9,6 @@ function repository() {
   return {
     get: async (_id: string): Promise<Player | undefined> => undefined,
     create: async (_player: Player) => {},
-    consumeCreationAttempt: async (_hash: string, _now: number) => true,
   };
 }
 
@@ -37,19 +36,13 @@ test('valid identities return authoritative stored state, including negative sco
   assert.equal(await playerService(store).find(id), undefined);
 });
 
-test('creation persists zero score with server time and does not store raw IP', async (t) => {
+test('creation persists zero score with server time', async (t) => {
   t.mock.method(Date, 'now', () => 1800000000999);
   const store = repository();
   let persisted: Player | undefined;
-  store.consumeCreationAttempt = async (hash, now) => {
-    assert.match(hash, /^[a-f0-9]{64}$/);
-    assert.equal(now, 1800000000);
-
-    return true;
-  };
   store.create = async (player) => { persisted = player; };
 
-  const player = await playerService(store).create('127.0.0.1');
+  const player = await playerService(store).create();
 
   assert.deepEqual(player, persisted);
   assert.equal(player?.score, 0);
@@ -58,24 +51,13 @@ test('creation persists zero score with server time and does not store raw IP', 
   assert.ok(player?.name);
 });
 
-test('throttled creation never writes a player', async () => {
-  const store = repository();
-  store.consumeCreationAttempt = async () => false;
-  store.create = async () => { throw new Error('unexpected write'); };
-
-  assert.equal(await playerService(store).create('127.0.0.1'), undefined);
-});
-
-test('database failures propagate instead of becoming invalid identities or limits', async () => {
+test('database failures propagate instead of becoming invalid identities', async () => {
   const store = repository();
   const failure = new Error('storage unavailable');
   store.get = async () => { throw failure; };
-  store.consumeCreationAttempt = async () => { throw failure; };
+  store.create = async () => { throw failure; };
   const service = playerService(store);
 
   await assert.rejects(service.find(id), failure);
-  await assert.rejects(service.create('127.0.0.1'), failure);
-  store.consumeCreationAttempt = async () => true;
-  store.create = async () => { throw failure; };
-  await assert.rejects(service.create('127.0.0.1'), failure);
+  await assert.rejects(service.create(), failure);
 });

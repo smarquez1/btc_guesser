@@ -1,9 +1,7 @@
-import { ConditionalCheckFailedException } from '@aws-sdk/client-dynamodb';
 import {
   type DynamoDBDocumentClient,
   GetCommand,
   PutCommand,
-  UpdateCommand,
 } from '@aws-sdk/lib-dynamodb';
 import type { Player } from '../types/player.ts';
 
@@ -33,30 +31,6 @@ export function playerRepository(client: DynamoDBDocumentClient, tableName: stri
         Item: { pk: `PLAYER#${player.id}`, sk: 'PROFILE', ...player },
         ConditionExpression: 'attribute_not_exists(pk)',
       }));
-    },
-
-    async consumeCreationAttempt(addressHash: string, now: number) {
-      const windowStart = Math.floor(now / 3600) * 3600;
-
-      try {
-        await client.send(new UpdateCommand({
-          TableName: tableName,
-          Key: { pk: `PLAYER_LIMIT#${addressHash}`, sk: `${windowStart}` },
-          UpdateExpression: 'SET expiresAt = :expiry ADD attempts :one',
-          ConditionExpression: 'attribute_not_exists(attempts) OR attempts < :limit',
-          ExpressionAttributeValues: {
-            ':expiry': windowStart + 7200,
-            ':one': 1,
-            ':limit': 10,
-          },
-        }));
-
-        return true;
-      } catch (error) {
-        if (error instanceof ConditionalCheckFailedException) return false;
-
-        throw error;
-      }
     },
   };
 }
