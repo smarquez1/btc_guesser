@@ -11,7 +11,7 @@
     "dev": "vite --host 127.0.0.1",
     "dev:server": "node --env-file=.env --watch --import tsx server/index.ts",
     "build": "pnpm typecheck && vite build",
-    "start": "node --env-file=.env --import tsx server/index.ts",
+    "start": "node --env-file-if-exists=.env --import tsx server/index.ts",
     "test": "node --import tsx --test tests/*.test.ts",
     "test:integration": "node --env-file=.env --import tsx --test tests/integration/*.test.ts",
     "test:e2e": "node --env-file=.env node_modules/@playwright/test/cli.js test",

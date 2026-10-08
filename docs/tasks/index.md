@@ -13,7 +13,7 @@ Update this index as work progresses; record validation and limitations in each 
 | 006 | done | [Game UI](006-game-ui.md) |
 | 007 | done | [Test coverage review](007-unit-tests.md) |
 | 008 | done | [End-to-end verification](008-end-to-end-verification.md) |
-| 009 | todo | [Deployment](009-deployment.md) |
+| 009 | in-progress | [Deployment](009-deployment.md) |
 
 Testing strategy: Most automated coverage belongs in fast unit tests. Keep
 end-to-end verification small and focused on the critical working flow.

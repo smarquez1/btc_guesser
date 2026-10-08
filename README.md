@@ -51,9 +51,12 @@ process health check, not a DynamoDB readiness check. Vite proxies `/api` to
 port 3000; update `vite.config.ts` if you change the backend port.
 
 The backend validates configuration before listening. `PORT` defaults to 3000,
-`HOST` to `127.0.0.1`, and `COOKIE_SECURE` to false. `AWS_REGION`,
-`DYNAMODB_TABLE`, and `APP_ORIGIN` are required. `APP_ORIGIN` must be a browser
-origin without a path. Set `COOKIE_SECURE=true` when serving over HTTPS.
+`HOST` to `127.0.0.1`, and `COOKIE_SECURE` to false in development. With
+`NODE_ENV=production`, the host defaults to `0.0.0.0` and secure cookies default
+to true. `AWS_REGION` and `DYNAMODB_TABLE` are required. `APP_ORIGIN` must be a
+browser origin without a path; in production it defaults to Render's supplied
+`RENDER_EXTERNAL_URL`. Explicit `HOST`, `COOKIE_SECURE`, and `APP_ORIGIN` values
+override these defaults. Set `APP_ORIGIN` explicitly when using a custom domain.
 
 Build the client and run the backend:
 
@@ -62,10 +65,46 @@ mise exec -- pnpm build
 mise exec -- pnpm start
 ```
 
-The backend currently serves only API routes; serving the built client and
-production deployment belong to task 009. For AWS, omit `DYNAMODB_ENDPOINT`
+Set `NODE_ENV=production` to serve the built client from `dist` alongside the
+API. `pnpm start` loads `.env` when present and also supports platform-provided
+environment variables without that file. For AWS, omit `DYNAMODB_ENDPOINT`
 and the local credential placeholders, and use the normal AWS credential chain.
 Do not use `db:create` to provision deployed infrastructure.
+
+## Render deployment
+
+Deploy one Node web service from this repository, with the repository root as
+its root directory. `.node-version` pins Node to the local mise version.
+
+- Build command: `corepack enable && pnpm install --frozen-lockfile --prod=false && pnpm build`
+- Start command: `pnpm start`
+- Health check path: `/api/health`
+
+Configure these environment variables in Render:
+
+| Variable | Value |
+| --- | --- |
+| `NODE_ENV` | `production` |
+| `AWS_REGION` | `us-east-2` |
+| `DYNAMODB_TABLE` | `btc-guesser` |
+
+The production defaults handle the host, secure cookies, and Render origin.
+Use Render's automatically supplied `PORT`. Omit `DYNAMODB_ENDPOINT`,
+`AWS_PROFILE`, and all local credential placeholders. Do not upload `.env`.
+
+AWS access must be configured separately before game requests work. Render's
+[managed OIDC](https://render.com/docs/oidc) requires a Pro workspace or higher;
+set `AWS_ROLE_ARN` after configuring the AWS provider and a restricted role.
+On Hobby, use a dedicated IAM user's access key stored only in Render's secret
+environment variables (`AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`).
+Neither option should use root credentials or the developer's SSO session.
+Restrict access to this application's DynamoDB table and required item operations.
+
+Keep the frontend and API on the same Render service for same-origin cookies.
+The health endpoint checks the process only; verify `/api/price`, player creation,
+guess resolution, and score persistence after deployment. Deployment verification
+is still pending in task 009. Proxy trust remains disabled, so player-creation
+limits may be shared among visitors behind Render's proxy.
 
 ## Anonymous players
 

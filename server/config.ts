@@ -10,8 +10,8 @@ function required(
   return value;
 }
 
-function httpUrl(env: NodeJS.ProcessEnv, name: string): URL {
-  const value = required(env, name);
+function httpUrl(env: NodeJS.ProcessEnv, name: string, fallback?: string): URL {
+  const value = required(env, name, fallback);
 
   try {
     const url = new URL(value);
@@ -33,6 +33,7 @@ function httpUrl(env: NodeJS.ProcessEnv, name: string): URL {
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
+  const production = env.NODE_ENV === 'production';
   const portText = env.PORT ?? '3000';
   const port = Number(portText);
 
@@ -48,7 +49,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     );
   }
 
-  const origin = httpUrl(env, 'APP_ORIGIN');
+  const origin = httpUrl(
+    env,
+    'APP_ORIGIN',
+    production ? env.RENDER_EXTERNAL_URL : undefined,
+  );
 
   if (origin.href !== `${origin.origin}/`) {
     throw new Error(
@@ -56,7 +61,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     );
   }
 
-  const cookieSecure = env.COOKIE_SECURE ?? 'false';
+  const cookieSecure = env.COOKIE_SECURE ?? (production ? 'true' : 'false');
 
   if (!['true', 'false'].includes(cookieSecure)) {
     throw new Error('Configuration: COOKIE_SECURE must be true or false');
@@ -64,7 +69,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
 
   return {
     port,
-    host: required(env, 'HOST', '127.0.0.1'),
+    host: required(env, 'HOST', production ? '0.0.0.0' : '127.0.0.1'),
     region: required(env, 'AWS_REGION'),
     tableName,
     dynamodbEndpoint:
