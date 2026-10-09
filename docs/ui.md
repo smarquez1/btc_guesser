@@ -53,4 +53,9 @@ After implementation, verify the rendered UI with Playwright. For meaningful gam
 - An obvious error state
 - Readable desktop layout at 16:10, without requiring an exact mockup match
 
-Use browser automation for direct verification without adding an end-to-end suite. The user has authorized installing Playwright if needed. Record which checks use real APIs and which use controlled responses; final integrated verification belongs to task 008. Avoid repeating the full flow for trivial changes.
+Use the existing Playwright suite for integrated verification; see README.md for
+commands. It builds the frontend once and runs two parallel workers with isolated
+Fastify servers, local tables, controlled prices, and clocks. Add scenarios when
+requested rather than duplicating coverage. The user has authorized installing
+Playwright if needed. Record which checks use real APIs and which use controlled
+responses. Avoid repeating the full flow for trivial changes.

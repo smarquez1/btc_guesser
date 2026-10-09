@@ -84,20 +84,35 @@ mise exec -- pnpm test:integration
 mise exec -- pnpm build
 ```
 
-Integration tests require DynamoDB Local and `.env`. They use isolated temporary
-tables and reject nonlocal endpoints. If `.env` points at AWS, override the endpoint
-with `DYNAMODB_ENDPOINT=http://127.0.0.1:8000` for integration tests and commits.
+Integration and browser tests load the committed `.env.example` directly, so
+they do not require your private `.env`. They use isolated temporary local tables
+and reject nonlocal endpoints. If DynamoDB Local uses another port, pass an
+override such as `DYNAMODB_ENDPOINT=http://127.0.0.1:8001 mise exec -- pnpm test:integration`.
 
-For desktop browser tests, keep DynamoDB Local running and ports 3001 and 5174 free:
+For desktop browser tests, keep DynamoDB Local running on port 8000 (or your
+configured local endpoint). Test servers choose available ports automatically:
 
 ```sh
 mise exec -- pnpm exec playwright install chromium
 mise exec -- pnpm test:e2e
 ```
 
-Browser tests cover correct/incorrect guesses, pending recovery, equal prices,
-errors, and persistence with real backend/storage interactions and controlled
-prices and clocks. Traces and screenshots go under ignored `test-results/`.
+To check stability, repeat every scenario twice:
+
+```sh
+mise exec -- pnpm test:e2e --repeat-each=2
+```
+
+Browser tests cover both directions and scoring outcomes, consecutive rounds,
+deadline eligibility, equal prices, browser reopening, lost responses, competing
+tabs, connection recovery, and invalid cookies. Each game test owns its table,
+price source, clock, and Fastify server serving the built frontend and API together.
+The suite builds the frontend once before two workers run tests in parallel.
+Production checks run the actual server entrypoint to verify assets, cookies,
+pending reload recovery, and missing-build startup failure. Tests use DynamoDB
+Local and controlled prices; they do not call AWS or live Coinbase. Traces and
+screenshots go under ignored `test-results/`, with separate paths per test and
+repetition.
 
 Before committing, run `mise exec -- pnpm lint` and `mise exec -- pnpm typecheck`.
 Lefthook also runs staged lint, typecheck, unit/integration tests, and the build.

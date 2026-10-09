@@ -14,6 +14,7 @@ Update this index as work progresses; record validation and limitations in each 
 | 007 | done | [Test coverage review](007-unit-tests.md) |
 | 008 | done | [End-to-end verification](008-end-to-end-verification.md) |
 | 009 | done | [Deployment](009-deployment.md) |
+| 010 | done | [Expanded test coverage and parallel E2E](010-test-coverage-and-parallel-e2e.md) |
 
 Testing strategy: Most automated coverage belongs in fast unit tests. Keep
 end-to-end verification small and focused on the critical working flow.

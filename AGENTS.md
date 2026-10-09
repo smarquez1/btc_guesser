@@ -85,10 +85,11 @@ Avoid Redux, Zustand, queues, microservices, DI frameworks, generic repositories
 - Follow the workflow: implementation -> user approval -> requested tests -> commit.
   Add tests only when the user asks, after reviewing the implementation.
 
-- Use Lefthook before commits to run Biome on staged files, `pnpm typecheck` (`tsc --noEmit`) on the whole project, all unit and integration tests, and the production build. Integration tests require DynamoDB Local and use `DYNAMODB_ENDPOINT` from `.env` with isolated temporary tables.
+- Use Lefthook before commits to run Biome on staged files, `pnpm typecheck` (`tsc --noEmit`) on the whole project, all unit and integration tests, and the production build. Integration tests require DynamoDB Local and load `.env.example` with isolated temporary tables.
 - Run lint and type checks only before committing or when the user explicitly asks. Do not run formatters unless explicitly asked.
 - Add and run unit tests when the developer asks, before committing the related work. Keep most coverage fast and deterministic; add focused integration tests where real component interactions matter.
-- Defer end-to-end tests to the final verification task. Use Playwright for direct verification of meaningful UI changes. CI remains deferred unless explicitly requested.
+- Use the existing Playwright suite for critical integrated flows and direct verification of meaningful UI changes. Add E2E scenarios when requested; keep rule permutations in fast unit tests. CI remains deferred unless explicitly requested.
+- Keep E2E tests independent under parallel execution: use per-test servers, tables, prices, clocks, and browser state. Let the OS assign server ports and use fixture URLs. Build the frontend once before workers start; write artifacts with `testInfo.outputPath()`. See README.md for run and repeat commands.
 - Use focused commits with short imperative subjects. PRs explain purpose, link relevant issues, report validation and limitations, and include screenshots for visible changes.
 
 ## Deployment configuration
@@ -101,8 +102,9 @@ Avoid Redux, Zustand, queues, microservices, DI frameworks, generic repositories
 - Keep local SSO credentials separate from Render's dedicated IAM user. Restrict
   deployed permissions to the application table; store credentials only in Render.
 - Keep proxy trust disabled; player creation does not depend on visitor IPs.
-- When .env points at AWS, override DYNAMODB_ENDPOINT with the running DynamoDB
-  Local endpoint for integration checks and commits. Never run tests against AWS.
+- Tests load local defaults from `.env.example`, independently of private `.env`.
+  If the shell exports DYNAMODB_ENDPOINT, ensure it points at the running
+  DynamoDB Local instance for integration checks and commits. Never run tests against AWS.
 
 ## Task tracking
 

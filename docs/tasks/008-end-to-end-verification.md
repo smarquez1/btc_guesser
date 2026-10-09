@@ -1,6 +1,11 @@
 # End-to-end verification
 
 Depends on: 007.
+
+The dated validation below describes the original suite. For the current parallel
+setup, automatic ports, and expanded coverage, see [task 010](010-test-coverage-and-parallel-e2e.md)
+and README.md.
+
 Keep browser verification limited because end-to-end runs are slow. Unit tests own
 the rule permutations; verify the critical integrated flow directly with Playwright.
 
