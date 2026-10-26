@@ -6,7 +6,7 @@ This challenge targets desktop only. Use the 16:10 mockup as a loose guide for l
 
 ## Stack and layout
 
-- Frontend: React, TypeScript, Vite, and Tailwind CSS with semantic native HTML. Keep markup and styling minimal; use small amounts of plain CSS when useful. Code in `src/`, static assets in `public/`. Keep the existing Tailwind setup. Do not use shadcn/ui or another UI component library.
+- Frontend: Svelte 5, TypeScript, Vite, and Tailwind CSS with semantic native HTML. Keep markup and styling minimal; use small amounts of plain CSS when useful. Code in `src/`, static assets in `public/`. Keep the existing Tailwind setup. Do not use shadcn/ui or another UI component library.
 - Backend: Fastify, TypeScript, DynamoDB, and Coinbase. Code directly under `server/`.
 - Use pnpm and mise; tool versions live in `.tool-versions`. Keep dependency manifests and applicable lockfiles committed.
 - Read `README.md` for setup, run, and deployment commands; update it when those commands or functionality change.
@@ -15,7 +15,7 @@ This challenge targets desktop only. Use the 16:10 mockup as a loose guide for l
 
 For code changes, modify the target files directly. Never create temporary scripts (e.g. `modify.py`, `update.py`, `patch.py`) to perform edits.
 
-Prefer explicit, boring code, focused files, and small local React state. Apply DRY to shared behavior and business rules, not a few repeated lines. Add dependencies, folders, helpers, or layers only for a concrete need.
+Prefer explicit, boring code, focused files, and small local reactive state. Apply DRY to shared behavior and business rules, not a few repeated lines. Add dependencies, folders, helpers, or layers only for a concrete need.
 
 Keep the implementation easy to walk through from route to service to repository. Prefer small functions and explicit operations; do not add abstractions for hypothetical future needs.
 
@@ -23,18 +23,19 @@ Use routes for HTTP handling, services for business logic, repositories for expl
 
 The backend owns validation, timestamps, prices, caching, resolution, and persistence. The frontend renders server state, collects input, and calls APIs. Never trust client-provided game state or timestamps.
 
-## React structure and effects
+## Svelte structure and effects
 
-- Put UI components in `src/components/`; keep `App.tsx` as the screen entrypoint.
-  Put hooks in `src/hooks/` and API/formatting helpers in `src/lib/`. Keep
-  `main.tsx` and `styles.css` at the `src/` root. Use direct imports; avoid barrel
-  exports and add further folders only when needed.
+- Put UI components in `src/components/`; keep `App.svelte` as the screen
+  entrypoint. Put API/formatting helpers and extracted reactive logic in
+  `src/lib/`. Keep `main.ts` and `styles.css` at the `src/` root. Use direct
+  imports; avoid barrel exports and add further folders only when needed.
 - Keep screen components focused on composing UI and connecting user actions.
   Extract meaningful sections and reusable native controls into typed components.
 - Keep presentation components independent of API calls and persistence.
-- Put substantial synchronization in focused hooks named for their purpose,
-  such as `usePrice` and `useGame`. Keep closely coordinated game state together;
-  avoid splitting it across hooks that require multiple coordinating callbacks.
+- Put substantial synchronization in focused Svelte reactive modules named for
+  their purpose, such as `price.svelte.ts` and `game.svelte.ts`. Keep closely
+  coordinated game state together; avoid splitting it across modules that
+  require multiple coordinating callbacks.
 - Give each effect one synchronization responsibility. Separate independent
   polling and timers, and make setup and cleanup easy to see.
 - Extract substantial request sequences into named async functions. Prefer
@@ -43,12 +44,12 @@ The backend owns validation, timestamps, prices, caching, resolution, and persis
   document refs needed for request coordination.
 - Handle cancellation, stale responses, duplicate actions, and recovery
   explicitly. Cleanup must stop future polling and prevent obsolete updates.
-- Keep countdown updates local to the UI that displays them; avoid rerendering
-  the whole screen every second. Avoid overlapping polls and redundant requests.
-- Reuse behavior and domain rules where they repeat. Avoid generic hooks,
-  component systems, and layers without a concrete need.
-- Prefer clear branches and small named functions over nested ternaries and
-  dense JSX. Add memoization only for a demonstrated performance need.
+- Keep countdown updates local to the UI that displays them. Avoid overlapping
+  polls and redundant requests.
+- Reuse behavior and domain rules where they repeat. Avoid generic reactive
+  helpers, component systems, and layers without a concrete need.
+- Prefer clear branches and small named functions over deeply nested markup or
+  dense expressions. Add memoization only for a demonstrated performance need.
 
 ## Formatting and readability
 

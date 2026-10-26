@@ -19,6 +19,7 @@ export async function createLocalDatabase(overrides: NodeJS.ProcessEnv = {}) {
 
   const environment = {
     ...process.env,
+    NODE_ENV: 'test',
     AWS_REGION: 'us-east-1',
     APP_ORIGIN: 'http://127.0.0.1',
     HOST: '127.0.0.1',

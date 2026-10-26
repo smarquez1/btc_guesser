@@ -2,11 +2,13 @@
 
 ## Structure and ownership
 
-Production runs on one Render Node web service: Fastify serves the built React
+Production runs on one Render Node web service: Fastify serves the built Svelte
 client from dist alongside /api. NODE_ENV=production enables frontend serving
 and requires dist/index.html to exist. HOST and secure cookies have production
 defaults, while APP_ORIGIN falls back to Render's RENDER_EXTERNAL_URL. Explicit
 configuration wins; custom domains require APP_ORIGIN. See README.md for commands.
+In local development, requests may use either `localhost` or `127.0.0.1` on the
+configured HTTP origin's port. Production continues to enforce the exact origin.
 
 DynamoDB remains in AWS us-east-2 with string pk/sk keys and expiresAt TTL.
 AWS_REGION selects the database region, independently of the Render host region.

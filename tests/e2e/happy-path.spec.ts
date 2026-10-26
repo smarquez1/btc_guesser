@@ -21,6 +21,7 @@ test('a correct higher guess earns one persisted point', async ({ page, game }) 
 
   await game.advance([page], guess.deadline + 5);
   await expectResult(page, true, 1);
+  await expect(page.locator('#price-label + p')).toHaveClass(/text-green-700/);
   const result = await (await page.request.get(`/api/guesses/${guess.id}`)).json();
   expect(result.finalPrice).toBeGreaterThan(result.startingPrice);
   expect(result.finalObservedAt).toBeGreaterThanOrEqual(guess.deadline);
@@ -62,6 +63,7 @@ test('a lower guess survives reopening, waits for a change, and loses one point'
 
     await game.advance([page], guess.deadline + 11, 60_100);
     await expectResult(page, false, -1);
+    await expect(page.locator('#price-label + p')).toHaveClass(/text-red-700/);
     await expect(page.getByText('$60,100.00', { exact: true })).toBeVisible();
     await directionButton(page, 'up').focus();
     await page.keyboard.press('Tab');

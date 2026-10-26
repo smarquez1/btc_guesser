@@ -4,6 +4,22 @@ import {
   type PublicGuess,
 } from './fixtures.ts';
 
+test('localhost works when the backend is configured for 127.0.0.1', async ({ page, game }) => {
+  const localOrigin = game.origin.replace('127.0.0.1', 'localhost');
+  const creationResponse = page.waitForResponse(response =>
+    response.url().endsWith('/api/players') && response.request().method() === 'POST',
+  );
+  await page.clock.setFixedTime(Date.now());
+  await page.goto(localOrigin);
+  const response = await creationResponse;
+  expect(response.status(), JSON.stringify(await response.request().allHeaders())).toBe(201);
+  await expect(page.locator('header strong')).toHaveText('0');
+  await expect(directionButton(page, 'up')).toBeEnabled();
+
+  await submitGuess(page, 'up');
+  await expectPending(page, 'up');
+});
+
 test('a lost submission response recovers the committed guess and scores once', async ({ page, game }) => {
   await game.open(page);
   let committed: PublicGuess | undefined;
