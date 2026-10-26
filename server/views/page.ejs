@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>BTC Guesser</title>
+    <% if (assets.mode === 'development') { %>
+      <script type="module" src="<%= assets.viteOrigin %>/@vite/client"></script>
+      <script type="module" src="<%= assets.entry %>"></script>
+    <% } else { %>
+      <% for (const stylesheet of assets.stylesheets) { %>
+        <link rel="stylesheet" href="<%= stylesheet %>" />
+      <% } %>
+      <script type="module" src="<%= assets.script %>"></script>
+    <% } %>
+  </head>
+  <body>
+    <div id="game-sync" hx-history="false">
+      <button type="button" class="hidden" aria-hidden="true"
+        hx-post="/api/ui/session"
+        hx-trigger="<%= needsSession ? 'load, ' : '' %>player-invalid from:body"
+        hx-target="#game"
+        hx-swap="outerHTML"
+        hx-sync="#game-sync:replace"></button>
+      <% if (view) { %>
+        <%- include('game.ejs', { view, formatUsd }) %>
+      <% } else { %>
+        <%- include('game-loading.ejs') %>
+      <% } %>
+    </div>
+  </body>
+</html>

@@ -2,11 +2,12 @@
 
 ## Structure and ownership
 
-Production runs on one Render Node web service: Fastify serves the built React
-client from dist alongside /api. NODE_ENV=production enables frontend serving
-and requires dist/index.html to exist. HOST and secure cookies have production
-defaults, while APP_ORIGIN falls back to Render's RENDER_EXTERNAL_URL. Explicit
-configuration wins; custom domains require APP_ORIGIN. See README.md for commands.
+Production runs on one Render Node web service: Fastify renders EJS HTML and
+serves the built HTMX/CSS assets from `dist/assets`. `NODE_ENV=production`
+requires the Vite manifest and every referenced asset. HOST and secure cookies
+have production defaults, while APP_ORIGIN falls back to Render's
+RENDER_EXTERNAL_URL. Explicit configuration wins; custom domains require
+APP_ORIGIN. See README.md for commands.
 
 DynamoDB remains in AWS us-east-2 with string pk/sk keys and expiresAt TTL.
 AWS_REGION selects the database region, independently of the Render host region.
@@ -28,9 +29,10 @@ template. Keep I/O separate from business rules where practical, reuse shared
 rules across routes, and avoid extra architectural layers.
 
 The backend owns identity validation, game rules, prices, timestamps, caching,
-deadlines, resolution, and persistence. The frontend renders server state,
-collects input, calls APIs, and displays countdowns. Never trust client-provided
-prices, timestamps, deadlines, results, scores, or player state.
+deadlines, resolution, and persistence. Fastify renders authoritative HTML and
+HTMX forms submit user choices; browser code only updates countdown display and
+coordinates fragment recovery. Never trust client-provided prices, timestamps,
+deadlines, results, scores, or player state.
 
 ## Anonymous players
 
@@ -72,19 +74,19 @@ workers are unnecessary unless a concrete requirement emerges.
 
 ## API and persistence
 
-Keep the API small and explicit. A suggested shape is:
+The browser-facing game uses same-origin HTML routes:
 
 ```text
-POST /api/players
-GET  /api/price
-POST /api/guesses
-GET  /api/guesses/:id
+GET  /api/game
+POST /api/ui/session
+GET  /api/ui/game
+POST /api/ui/guesses
 ```
 
-Validate all input server-side, using Fastify schemas where practical. Return
-sensible status codes and explicitly handle invalid players/guesses, missing
-or stale prices, Coinbase unavailability, pending results, and DynamoDB failures.
-Do not expose internal error details.
+Validate all input server-side, using Fastify schemas where practical. Render
+safe inline errors and explicitly handle invalid players, missing or stale
+prices, Coinbase unavailability, pending results, and DynamoDB failures. Do not
+expose internal error details. `/api/health` remains the operational JSON endpoint.
 
 Use straightforward DynamoDB keys and understandable records based on required
 access patterns. Avoid elaborate single-table designs without justification.
@@ -121,15 +123,15 @@ and makes retries safe without locks or background workers.
 DynamoDB Local accepts TTL configuration but does not perform automatic TTL
 deletion; explicit expiry checks are still required.
 
-## Implemented player API
+## Implemented player session
 
-`POST /api/players` creates a server-generated UUID v4 identity, generated display
+`POST /api/ui/session` creates a server-generated UUID v4 identity, generated display
 name, zero score, and epoch-second `createdAt`. The identity is a bearer secret
 held only in an HTTP-only SameSite Strict cookie (`btc_player`, path `/api`,
 one-year max age, Secure when configured). Responses exclude the identity.
-An existing valid cookie reuses the profile; invalid cookies receive 401 and
-are cleared. `GET /api/players/me` validates the cookie and reads the profile
-consistently from DynamoDB, returning 401 for missing or unknown identities.
+An existing valid cookie reuses the profile; invalid cookies are cleared and
+replaced with a new anonymous profile. `GET /api/ui/game` validates the cookie
+and reads the profile consistently from DynamoDB.
 Creation accepts no state fields and checks supplied browser Origin against
 `APP_ORIGIN`; explicit cross-site requests are rejected.
 
@@ -139,10 +141,10 @@ Cookie loss has no identity recovery. Clearing cookies can create additional
 players, an accepted limitation of anonymous play. Legacy PLAYER_LIMIT records
 are no longer read or written and expire through their existing TTL.
 
-## Implemented pricing API
+## Implemented pricing
 
-`GET /api/price` exposes `{ symbol, price, observedAt, stale }` without requiring
-an identity. Coinbase's public Exchange BTC-USD ticker provides the last-trade
+The rendered game displays the latest available price and observation time
+without exposing a JSON price endpoint. Coinbase's public Exchange BTC-USD ticker provides the last-trade
 price and source timestamp. The client validates a finite positive decimal price
 and a valid nonfuture timestamp, converts it to epoch seconds, and uses a
 five-second HTTP timeout. No secrets or additional configuration are required.
@@ -159,12 +161,12 @@ A conditional write orders observations by validated Coinbase `trade_id`, stored
 as internal `tradeId`. Newer trades can replace older ones within the same epoch
 second. Equal trades can advance `freshUntil`; older trades and earlier freshness
 values cannot replace newer ones. Existing records without a trade ID can upgrade
-only if the candidate observation timestamp is at least as recent. Trade IDs are
-not returned by the API.
+only if the candidate observation timestamp is at least as recent. Trade IDs
+remain internal.
 
-Available stale data returns 200 with `stale: true`; no available data returns
-503 with a retry hint. Database errors propagate to the safe 500 handler. The API
-sets `Cache-Control: no-store`. Guess resolution evaluates deadline eligibility from
+Available stale data remains visible but disables new guesses; no available data
+keeps guesses disabled. Database errors propagate to the safe 500 handler. HTML
+pages and fragments set `Cache-Control: no-store`. Guess resolution evaluates deadline eligibility from
 `observedAt`, independently of `stale`; cached data from before a deadline cannot
 resolve a guess simply because it was read afterward. No background jobs or
 cross-process refresh locks are introduced; simultaneous cache misses may issue
@@ -172,13 +174,13 @@ multiple Coinbase requests, while conditional persistence preserves ordering.
 
 ## Implemented guess lifecycle
 
-`POST /api/guesses` validates the cookie, browser origin, and an exact body with
+`POST /api/ui/guesses` validates the cookie, browser origin, and an exact form body with
 direction `up` or `down`. The service obtains a fresh price, records its source
 time separately from submission time, and sets a 60-second deadline. A transaction
 creates the pending guess and conditionally sets the player's pending ID.
 Pending guesses have no TTL, avoiding dangling profile references.
 
-`GET /api/guesses/:id` validates ownership before fetching pricing. Before the
+`GET /api/ui/game?guessId=...` validates ownership before fetching pricing. Before the
 deadline it returns pending immediately; afterward the shared resolution rule
 requires an observation at or after the deadline with a different price.
 An eligible stale fallback can resolve; missing pricing leaves the guess pending.

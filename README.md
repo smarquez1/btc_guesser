@@ -6,7 +6,7 @@ and scores persist across reloads using an HTTP-only cookie and DynamoDB.
 
 **[Play the game](https://btc-guesser.onrender.com)** · Desktop only
 
-React, TypeScript, Vite, and Tailwind frontend; Fastify backend with DynamoDB and
+Fastify-rendered HTML with HTMX, Vite, and Tailwind; Fastify backend with DynamoDB and
 Coinbase's public price API. One Render web service serves the frontend and API.
 
 ## Run locally
@@ -33,8 +33,9 @@ mise exec -- pnpm dev
 Keep DynamoDB Local running. To run either process separately, use
 `pnpm dev:client` or `pnpm dev:server`. Stop the combined command with Ctrl+C.
 
-Open **http://127.0.0.1:5173**, matching `APP_ORIGIN` in `.env`. Vite proxies `/api`
-to the backend on port 3000. `localhost` and `127.0.0.1` are different origins.
+Open **http://127.0.0.1:3000**, matching `APP_ORIGIN` in `.env`. Fastify serves the
+page and API; Vite on port 5173 serves development assets. `localhost` and
+`127.0.0.1` are different origins.
 
 DynamoDB Local runs on port 8000. If occupied, start it with
 `DYNAMODB_LOCAL_PORT=8001 docker compose up -d` and update `DYNAMODB_ENDPOINT` in
@@ -73,8 +74,8 @@ Production serves `dist` and rejects a missing build. It defaults to host
 Render supplies `PORT`; `.node-version` pins Node. Set `APP_ORIGIN` for a custom
 domain. Explicit `HOST`, `COOKIE_SECURE`, and `APP_ORIGIN` override defaults.
 
-After deploying, check `/api/price`, submit a guess, wait for resolution, and
-reload to confirm the score persists. `/api/health` checks the process only.
+After deploying, open the game, submit a guess, wait for resolution, and reload
+to confirm the score persists. `/api/health` checks the process only.
 
 ## Checks
 
@@ -123,6 +124,10 @@ It does not format files.
 The backend owns prices, timestamps, validation, and scoring. Conditional DynamoDB
 transactions enforce one pending guess and apply each score change exactly once.
 Results resolve when polled; no worker or queue is needed. Coinbase needs no API key.
+
+If a guess submission loses its response, the browser disables further guesses
+and reconciles with the server; it never retries a potentially committed POST.
+The server may have accepted the guess even when the browser cannot confirm it.
 
 Anonymous identities have no recovery after cookie loss. Player creation has no
 rate limit. Scores persist; resolved guesses expire after 24 hours. Mobile/tablet

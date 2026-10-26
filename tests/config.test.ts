@@ -7,16 +7,18 @@ import { parseEnv } from 'node:util';
 const environment = {
   AWS_REGION: 'us-east-1',
   DYNAMODB_TABLE: 'btc-guess',
-  APP_ORIGIN: 'http://127.0.0.1:5173',
+  APP_ORIGIN: 'http://127.0.0.1:3000',
 };
 
-test('example browser origin matches the frontend development host', () => {
+test('example browser and Vite origins match the local development servers', () => {
   const example = parseEnv(readFileSync(new URL('../.env.example', import.meta.url), 'utf8'));
   const manifest = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
   const host = manifest.scripts['dev:client'].match(/--host\s+(\S+)/)?.[1];
 
   assert.equal(host, '127.0.0.1');
-  assert.equal(loadConfig(example).appOrigin, `http://${host}:5173`);
+  const config = loadConfig(example);
+  assert.equal(config.appOrigin, `http://${host}:3000`);
+  assert.equal(config.viteDevServerOrigin, `http://${host}:5173`);
 });
 
 test('minimal AWS configuration uses documented defaults without a custom endpoint', () => {
@@ -26,7 +28,8 @@ test('minimal AWS configuration uses documented defaults without a custom endpoi
     region: 'us-east-1',
     tableName: 'btc-guess',
     dynamodbEndpoint: undefined,
-    appOrigin: 'http://127.0.0.1:5173',
+    appOrigin: 'http://127.0.0.1:3000',
+    viteDevServerOrigin: undefined,
     cookieSecure: false,
   });
 });
@@ -117,7 +120,7 @@ test('browser origin cannot contain a path, query, or fragment', () => {
 });
 
 test('explicit empty optional settings fail instead of silently defaulting', () => {
-  for (const name of ['HOST', 'DYNAMODB_ENDPOINT', 'COOKIE_SECURE']) {
+  for (const name of ['HOST', 'DYNAMODB_ENDPOINT', 'VITE_DEV_SERVER_URL', 'COOKIE_SECURE']) {
     assert.throws(
       () => loadConfig({ ...environment, [name]: '' }),
       new RegExp(name),
