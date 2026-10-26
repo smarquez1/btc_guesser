@@ -16,7 +16,7 @@
     "test": "node --import tsx --test tests/*.test.ts",
     "test:integration": "node --env-file=.env.example --import tsx --test tests/integration/*.test.ts",
     "test:e2e": "node --env-file=.env.example node_modules/@playwright/test/cli.js test",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "svelte-check --tsconfig ./tsconfig.json --tsgo-experimental-api && tsc --noEmit",
     "format": "biome format --write .",
     "db:create": "node --env-file=.env --import tsx scripts/create-table.ts",
     "lint": "biome lint . --error-on-warnings",
@@ -28,23 +28,20 @@
     "@fastify/cookie": "^11.1.2",
     "@fastify/static": "^10.1.5",
     "fastify": "^5.12.5",
-    "react": "^19.3.0",
-    "react-dom": "^19.3.0",
+    "svelte": "^5.57.2",
     "tsx": "^4.23.15"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.15",
     "@playwright/test": "^1.63.0",
+    "@sveltejs/vite-plugin-svelte": "^7.3.1",
     "@tailwindcss/vite": "^4.3.3",
-    "@types/jsdom": "^30.0.0",
     "@types/node": "^26.6.4",
-    "@types/react": "^19.3.0",
-    "@types/react-dom": "^19.3.0",
-    "@vitejs/plugin-react": "^6.1.2",
-    "jsdom": "^30.1.2",
+    "@typescript/native": "npm:typescript@7",
     "lefthook": "2.1.17",
+    "svelte-check": "^4.7.7",
     "tailwindcss": "^4.3.3",
-    "typescript": "^7.0.2",
+    "typescript": "~6.0.3",
     "vite": "^8.3.3"
   }
 }

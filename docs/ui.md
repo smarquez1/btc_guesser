@@ -6,7 +6,7 @@ Keep the UI minimal and readable for desktop only. Use the approved 16:10 mockup
 
 Use:
 
-- React
+- Svelte 5
 - TypeScript
 - Vite
 - Semantic native HTML, including native buttons
@@ -15,7 +15,8 @@ Use:
 
 Use native controls and browser behavior. Do not use shadcn/ui, Base UI, or another UI component library. Keep Tailwind utilities and plain CSS focused on layout, spacing, readability, visible keyboard focus, and selected/disabled/result states. Avoid unnecessary wrappers, utility classes, and custom styles. Do not build a custom component system or add decorative styling.
 
-Use local React state unless something more complex is clearly required.
+Use component-local reactive state unless something more complex is clearly
+required.
 
 Use uppercase direction labels: green `GUESS HIGHER` and red `GUESS LOWER`.
 While pending, fill the selected button with its direction color and use white

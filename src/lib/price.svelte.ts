@@ -1,11 +1,11 @@
-import { useEffect, useState } from 'react';
-import { type Price, request } from '../lib/api';
+import { onMount } from 'svelte';
+import { type Price, request } from './api';
 
-export function usePrice() {
-  const [price, setPrice] = useState<Price | null>(null);
-  const [error, setError] = useState('');
+export function createPrice() {
+  let price = $state<Price | null>(null);
+  let error = $state('');
 
-  useEffect(() => {
+  onMount(() => {
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout>;
 
@@ -17,11 +17,11 @@ export function usePrice() {
           return;
         }
 
-        setPrice(latest);
-        setError('');
+        price = latest;
+        error = '';
       } catch {
         if (!cancelled) {
-          setError('Live price unavailable. Retrying automatically…');
+          error = 'Live price unavailable. Retrying automatically…';
         }
       } finally {
         if (!cancelled) {
@@ -31,11 +31,19 @@ export function usePrice() {
     }
 
     void refresh();
+
     return () => {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, []);
+  });
 
-  return { price, error };
+  return {
+    get price() {
+      return price;
+    },
+    get error() {
+      return error;
+    },
+  };
 }

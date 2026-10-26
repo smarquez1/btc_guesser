@@ -6,7 +6,7 @@ and scores persist across reloads using an HTTP-only cookie and DynamoDB.
 
 **[Play the game](https://btc-guesser.onrender.com)** · Desktop only
 
-React, TypeScript, Vite, and Tailwind frontend; Fastify backend with DynamoDB and
+Svelte, TypeScript, Vite, and Tailwind frontend; Fastify backend with DynamoDB and
 Coinbase's public price API. One Render web service serves the frontend and API.
 
 ## Run locally

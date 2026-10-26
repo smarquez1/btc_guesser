@@ -2,7 +2,7 @@
 
 ## Structure and ownership
 
-Production runs on one Render Node web service: Fastify serves the built React
+Production runs on one Render Node web service: Fastify serves the built Svelte
 client from dist alongside /api. NODE_ENV=production enables frontend serving
 and requires dist/index.html to exist. HOST and secure cookies have production
 defaults, while APP_ORIGIN falls back to Render's RENDER_EXTERNAL_URL. Explicit
