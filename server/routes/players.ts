@@ -1,5 +1,5 @@
 import type { FastifyPluginAsync } from 'fastify';
-import type { Config } from '../config.ts';
+import { isAllowedOrigin, type Config } from '../config.ts';
 import { playerErrorResponse, playerResponse } from '../schemas/player.ts';
 import type { playerService } from '../services/players.ts';
 
@@ -35,7 +35,7 @@ export const playerRoutes: FastifyPluginAsync<{
   }, async (request, reply) => {
     const origin = request.headers.origin;
 
-    if ((origin && origin !== config.appOrigin) || request.headers['sec-fetch-site'] === 'cross-site') {
+    if (!isAllowedOrigin(origin, config) || request.headers['sec-fetch-site'] === 'cross-site') {
       return reply.code(403).send({ error: 'Origin not allowed' });
     }
 

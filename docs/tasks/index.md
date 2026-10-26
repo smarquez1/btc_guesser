@@ -16,6 +16,7 @@ Update this index as work progresses; record validation and limitations in each 
 | 009 | done | [Deployment](009-deployment.md) |
 | 010 | done | [Expanded test coverage and parallel E2E](010-test-coverage-and-parallel-e2e.md) |
 | 011 | done | [Svelte frontend migration](011-svelte-frontend-migration.md) |
+| 012 | done | [Allow both local development origins](012-local-development-origins.md) |
 
 Testing strategy: Most automated coverage belongs in fast unit tests. Keep
 end-to-end verification small and focused on the critical working flow.

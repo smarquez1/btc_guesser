@@ -77,8 +77,33 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
         ? undefined
         : httpUrl(env, 'DYNAMODB_ENDPOINT').href,
     appOrigin: origin.origin,
+    allowLoopbackOriginAlias: !production,
     cookieSecure: cookieSecure === 'true',
   };
 }
 
 export type Config = ReturnType<typeof loadConfig>;
+
+export function isAllowedOrigin(
+  requestOrigin: string | undefined,
+  config: Pick<Config, 'appOrigin' | 'allowLoopbackOriginAlias'>,
+) {
+  if (!requestOrigin || requestOrigin === config.appOrigin) {
+    return true;
+  }
+
+  if (!config.allowLoopbackOriginAlias) {
+    return false;
+  }
+
+  const configured = new URL(config.appOrigin);
+  const loopbackHosts = ['127.0.0.1', 'localhost'];
+
+  if (configured.protocol !== 'http:' || !loopbackHosts.includes(configured.hostname)) {
+    return false;
+  }
+
+  configured.hostname = configured.hostname === 'localhost' ? '127.0.0.1' : 'localhost';
+
+  return requestOrigin === configured.origin;
+}

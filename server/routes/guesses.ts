@@ -1,5 +1,5 @@
 import type { FastifyPluginAsync } from 'fastify';
-import type { Config } from '../config.ts';
+import { isAllowedOrigin, type Config } from '../config.ts';
 import { guessResponse } from '../schemas/guess.ts';
 import { playerErrorResponse } from '../schemas/player.ts';
 import type { guessService } from '../services/guesses.ts';
@@ -17,7 +17,7 @@ export const guessRoutes: FastifyPluginAsync<{
   app.post<{ Body: { direction: 'up' | 'down' } }>('/api/guesses', {
     schema: { response: { 201: guessResponse, '4xx': playerErrorResponse, 503: playerErrorResponse } },
   }, async (request, reply) => {
-    if ((request.headers.origin && request.headers.origin !== config.appOrigin) ||
+    if (!isAllowedOrigin(request.headers.origin, config) ||
       request.headers['sec-fetch-site'] === 'cross-site') {
       return reply.code(403).send({ error: 'Origin not allowed' });
     }

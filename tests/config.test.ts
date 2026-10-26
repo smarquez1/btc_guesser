@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { loadConfig } from '../server/config.ts';
+import { isAllowedOrigin, loadConfig } from '../server/config.ts';
 import { readFileSync } from 'node:fs';
 import { parseEnv } from 'node:util';
 
@@ -27,8 +27,34 @@ test('minimal AWS configuration uses documented defaults without a custom endpoi
     tableName: 'btc-guess',
     dynamodbEndpoint: undefined,
     appOrigin: 'http://127.0.0.1:5173',
+    allowLoopbackOriginAlias: true,
     cookieSecure: false,
   });
+});
+
+test('development accepts either loopback hostname on the configured origin port', () => {
+  assert.equal(isAllowedOrigin('http://127.0.0.1:5173', loadConfig(environment)), true);
+  assert.equal(isAllowedOrigin('http://localhost:5173', loadConfig(environment)), true);
+  assert.equal(isAllowedOrigin('http://localhost:5174', loadConfig(environment)), false);
+  assert.equal(isAllowedOrigin('https://localhost:5173', loadConfig(environment)), false);
+
+  const configuredWithLocalhost = loadConfig({
+    ...environment,
+    APP_ORIGIN: 'http://localhost:5173',
+  });
+  assert.equal(isAllowedOrigin('http://127.0.0.1:5173', configuredWithLocalhost), true);
+});
+
+test('production only accepts its configured origin', () => {
+  const config = loadConfig({
+    ...environment,
+    NODE_ENV: 'production',
+    APP_ORIGIN: 'https://btc-guesser.example',
+  });
+
+  assert.equal(config.allowLoopbackOriginAlias, false);
+  assert.equal(isAllowedOrigin(config.appOrigin, config), true);
+  assert.equal(isAllowedOrigin('http://localhost:5173', config), false);
 });
 
 test('local settings and secure production overrides are parsed explicitly', () => {

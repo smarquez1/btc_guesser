@@ -33,8 +33,8 @@ mise exec -- pnpm dev
 Keep DynamoDB Local running. To run either process separately, use
 `pnpm dev:client` or `pnpm dev:server`. Stop the combined command with Ctrl+C.
 
-Open **http://127.0.0.1:5173**, matching `APP_ORIGIN` in `.env`. Vite proxies `/api`
-to the backend on port 3000. `localhost` and `127.0.0.1` are different origins.
+Open **http://127.0.0.1:5173** or **http://localhost:5173**. Vite proxies `/api`
+to the backend on port 3000; local development accepts both loopback hostnames.
 
 DynamoDB Local runs on port 8000. If occupied, start it with
 `DYNAMODB_LOCAL_PORT=8001 docker compose up -d` and update `DYNAMODB_ENDPOINT` in

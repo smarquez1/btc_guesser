@@ -15,17 +15,36 @@ const config = loadConfig({
   APP_ORIGIN: 'https://game.example', COOKIE_SECURE: 'true',
 });
 
-function setup() {
+function setup(routeConfig = config) {
   const app = buildApp();
   const players = {
     find: async (identity: string | undefined) => identity === player.id ? player : undefined,
     create: async (): Promise<typeof player> => player,
   };
   app.register(cookie);
-  app.register(playerRoutes, { config, players });
+  app.register(playerRoutes, { config: routeConfig, players });
 
   return { app, players };
 }
+
+test('development player creation accepts the localhost alias for the configured loopback origin', async (t) => {
+  const localConfig = loadConfig({
+    AWS_REGION: 'us-east-1',
+    DYNAMODB_TABLE: 'test-table',
+    APP_ORIGIN: 'http://127.0.0.1:5173',
+  });
+  const { app } = setup(localConfig);
+  t.after(() => app.close());
+
+  const response = await app.inject({
+    method: 'POST',
+    url: '/api/players',
+    headers: { origin: 'http://localhost:5173' },
+    payload: {},
+  });
+
+  assert.equal(response.statusCode, 201);
+});
 
 test('creation sets a secure opaque cookie and excludes identity from JSON', async (t) => {
   const { app } = setup();
