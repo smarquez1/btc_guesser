@@ -61,6 +61,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     );
   }
 
+  const viteDevServerOrigin = env.VITE_DEV_SERVER_URL === undefined
+    ? undefined
+    : httpUrl(env, 'VITE_DEV_SERVER_URL').origin;
+
   const cookieSecure = env.COOKIE_SECURE ?? (production ? 'true' : 'false');
 
   if (!['true', 'false'].includes(cookieSecure)) {
@@ -77,6 +81,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
         ? undefined
         : httpUrl(env, 'DYNAMODB_ENDPOINT').href,
     appOrigin: origin.origin,
+    viteDevServerOrigin,
     cookieSecure: cookieSecure === 'true',
   };
 }

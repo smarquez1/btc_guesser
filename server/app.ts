@@ -1,18 +1,20 @@
 import Fastify, { type FastifyError } from 'fastify';
 import cookie from '@fastify/cookie';
+import formbody from '@fastify/formbody';
+import view from '@fastify/view';
+import ejs from 'ejs';
+import { resolve } from 'node:path';
 import type { Config } from './config.ts';
 import { fetchCoinbasePrice } from './lib/coinbase.ts';
 import { priceRepository } from './repositories/prices.ts';
-import { priceRoutes } from './routes/prices.ts';
 import { priceService } from './services/prices.ts';
 import { createDynamoDB } from './lib/dynamodb.ts';
 import { playerRepository } from './repositories/players.ts';
-import { playerRoutes } from './routes/players.ts';
 import { playerService } from './services/players.ts';
 import { guessRepository } from './repositories/guesses.ts';
-import { guessRoutes } from './routes/guesses.ts';
 import { guessService } from './services/guesses.ts';
 import { healthRoutes } from './routes/health.ts';
+import { gameRoutes } from './routes/game.ts';
 
 export function buildApp(config?: Config, fetchPrice = fetchCoinbasePrice) {
   const app = Fastify({ logger: true });
@@ -44,16 +46,20 @@ export function buildApp(config?: Config, fetchPrice = fetchCoinbasePrice) {
     const players = playerService(playerRepository(documentClient, config.tableName));
     app.addHook('onClose', async () => client.destroy());
     app.register(cookie);
-    app.register(playerRoutes, { config, players });
-
+    app.register(formbody);
+    app.register(view, {
+      engine: { ejs },
+      root: resolve(import.meta.dirname, 'views'),
+    });
+    app.register(async (app) => {
+      app.get('/', async (_request, reply) => reply.redirect('/api/game'));
+    });
     const prices = priceService(
       priceRepository(documentClient, config.tableName),
       fetchPrice,
     );
-    app.register(priceRoutes, { prices });
-
     const guesses = guessService(guessRepository(documentClient, config.tableName), prices);
-    app.register(guessRoutes, { config, players, guesses });
+    app.register(gameRoutes, { config, players, prices, guesses });
   }
 
   return app;

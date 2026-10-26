@@ -11,11 +11,10 @@ import {
   UpdateTimeToLiveCommand,
   ResourceNotFoundException,
 } from '@aws-sdk/client-dynamodb';
-import { GetCommand, PutCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
+import { GetCommand, PutCommand } from '@aws-sdk/lib-dynamodb';
 import { priceRepository } from '../../server/repositories/prices.ts';
 import { guessRepository } from '../../server/repositories/guesses.ts';
 import { priceService } from '../../server/services/prices.ts';
-import { priceRoutes } from '../../server/routes/prices.ts';
 import type { CachedPrice } from '../../server/types/price.ts';
 import { buildApp } from '../../server/app.ts';
 import { playerRepository } from '../../server/repositories/players.ts';
@@ -198,101 +197,6 @@ test('table setup rejects existing incompatible TTL without changing it', async 
   assert.equal(TimeToLiveDescription?.AttributeName, 'wrongExpiry');
 });
 
-test('player API persists identities across app instances and rejects duplicate profile writes', async (t) => {
-  const tableName = `btc-guess-test-${randomUUID()}`;
-  const config = loadConfig({ ...environment, DYNAMODB_TABLE: tableName });
-  const { client, documentClient } = createDynamoDB(config);
-  const firstApp = buildApp(config);
-  const secondApp = buildApp(config);
-  t.after(async () => {
-    await Promise.all([firstApp.close(), secondApp.close()]);
-
-    try {
-      await client.send(new DeleteTableCommand({ TableName: tableName }));
-    } finally {
-      client.destroy();
-    }
-  });
-  await setupTable(tableName);
-  const repository = playerRepository(documentClient, tableName);
-  const created = await firstApp.inject({ method: 'POST', url: '/api/players' });
-
-  assert.equal(created.statusCode, 201);
-  assert.equal(created.json().score, 0);
-  const identityCookie = String(created.headers['set-cookie']).split(';')[0];
-  const id = identityCookie.split('=')[1];
-  const stored = await documentClient.send(new GetCommand({
-    TableName: tableName, Key: { pk: `PLAYER#${id}`, sk: 'PROFILE' },
-    ConsistentRead: true,
-  }));
-
-  assert.equal(stored.Item?.score, 0);
-  assert.equal(stored.Item?.expiresAt, undefined);
-  assert.ok(Number.isInteger(stored.Item?.createdAt));
-  assert.deepEqual(await repository.get(id), {
-    id, name: created.json().name, score: 0, createdAt: created.json().createdAt,
-  });
-  await assert.rejects(repository.create({
-    id, name: 'Overwrite', score: 99, createdAt: 1,
-  }), { name: 'ConditionalCheckFailedException' });
-
-  const resumed = await secondApp.inject({
-    method: 'POST', url: '/api/players', headers: { cookie: identityCookie },
-  });
-  assert.equal(resumed.statusCode, 200);
-  assert.deepEqual(resumed.json(), created.json());
-
-  // Simulate later game state and verify the API reads storage, not cookie state.
-  await documentClient.send(new UpdateCommand({
-    TableName: tableName, Key: { pk: `PLAYER#${id}`, sk: 'PROFILE' },
-    UpdateExpression: 'SET score = :score, pendingGuessId = :guess',
-    ExpressionAttributeValues: { ':score': -4, ':guess': 'guess-123' },
-  }));
-  const profile = await secondApp.inject({
-    url: '/api/players/me', headers: { cookie: identityCookie },
-  });
-  assert.equal(profile.statusCode, 200);
-  assert.equal(profile.json().score, -4);
-  assert.equal(profile.json().pendingGuessId, 'guess-123');
-  assert.equal(profile.json().id, undefined);
-
-  const unknown = await secondApp.inject({
-    url: '/api/players/me', headers: { cookie: `btc_player=${randomUUID()}` },
-  });
-  assert.equal(unknown.statusCode, 401);
-});
-
-test('concurrent player creation succeeds across app instances', async (t) => {
-  const tableName = `btc-guess-test-${randomUUID()}`;
-  const config = loadConfig({ ...environment, DYNAMODB_TABLE: tableName });
-  const { client } = createDynamoDB(config);
-  const apps = [buildApp(config), buildApp(config)];
-  t.after(async () => {
-    await Promise.all(apps.map((app) => app.close()));
-
-    try {
-      await client.send(new DeleteTableCommand({ TableName: tableName }));
-    } finally {
-      client.destroy();
-    }
-  });
-  await setupTable(tableName);
-  const responses = await Promise.all(Array.from({ length: 16 }, (_, index) =>
-    apps[index % 2].inject({
-      method: 'POST', url: '/api/players', remoteAddress: '127.0.0.2',
-      headers: { 'x-forwarded-for': `192.0.2.${index}` },
-    }),
-  ));
-
-  assert.equal(responses.filter((response) => response.statusCode === 201).length, 16);
-  assert.equal(new Set(responses.map((response) => response.headers['set-cookie'])).size, 16);
-  const otherAddress = await apps[0].inject({
-    method: 'POST', url: '/api/players', remoteAddress: '127.0.0.3',
-  });
-  assert.equal(otherAddress.statusCode, 201);
-});
-
-
 test('price cache writes never replace newer observations, including concurrent requests', async (t) => {
   const tableName = `btc-guess-test-${randomUUID()}`;
   const { client, documentClient } = createDynamoDB(
@@ -345,10 +249,7 @@ test('price service shares persisted cache and rejects expiry before DynamoDB TT
   const { client, documentClient } = createDynamoDB(
     loadConfig({ ...environment, DYNAMODB_TABLE: tableName }),
   );
-  const app = buildApp();
   t.after(async () => {
-    await app.close();
-
     try {
       await client.send(new DeleteTableCommand({ TableName: tableName }));
     } finally {
@@ -367,16 +268,14 @@ test('price service shares persisted cache and rejects expiry before DynamoDB TT
 
   assert.deepEqual(await second.get(), initial);
   now += 5;
-  app.register(priceRoutes, { prices: second });
-  const stale = await app.inject('/api/price');
+  const stale = await second.get();
 
-  assert.equal(stale.statusCode, 200);
-  assert.equal(stale.json().stale, true);
-  assert.equal(stale.json().observedAt, 1800000000);
+  assert.equal(stale?.stale, true);
+  assert.equal(stale?.observedAt, 1800000000);
   now = 1800003600;
-  const expired = await app.inject('/api/price');
+  const expired = await second.get();
 
-  assert.equal(expired.statusCode, 503);
+  assert.equal(expired, undefined);
   assert.deepEqual(await repository.get(), {
     symbol: 'BTC-USD', tradeId: 20, price: 65000, observedAt: 1800000000,
     freshUntil: 1800000005, expiresAt: 1800003600,
@@ -417,34 +316,43 @@ test('guess API transactions enforce one pending guess and exactly-once scoring 
   await players.create({ id: otherId, name: 'Other', score: 0, createdAt: clock });
   await prices.save({ symbol: 'BTC-USD', tradeId: 1, price: 100,
     observedAt: clock, freshUntil: clock + 1000, expiresAt: clock + 3600 });
-  const headers = { cookie: `btc_player=${playerId}` };
+  const headers = {
+    cookie: `btc_player=${playerId}`,
+    origin: config.appOrigin,
+    'content-type': 'application/x-www-form-urlencoded',
+  };
   const submitted = await Promise.all(Array.from({ length: 8 }, (_, index) =>
-    apps[index % 2].inject({ method: 'POST', url: '/api/guesses', headers, payload: { direction: 'up' } }),
+    apps[index % 2].inject({ method: 'POST', url: '/api/ui/guesses', headers, payload: 'direction=up' }),
   ));
 
-  assert.equal(submitted.filter(response => response.statusCode === 201).length, 1);
-  assert.equal(submitted.filter(response => response.statusCode === 409).length, 7);
-  const initial = submitted.find(response => response.statusCode === 201)?.json();
+  assert.equal(submitted.filter(response => response.statusCode === 200).length, 8);
+  assert.equal(submitted.filter(response => response.body.includes('Your guess:')).length, 8);
+  const initialId = (await players.get(playerId))?.pendingGuessId;
 
+  assert.ok(initialId);
+  const initial = await guesses.get(initialId);
   assert.ok(initial);
   assert.equal(initial.startedAt, clock);
   assert.equal(initial.deadline, clock + 60);
-  assert.equal((await players.get(playerId))?.pendingGuessId, initial.id);
-  assert.equal((await guesses.get(initial.id))?.expiresAt, undefined);
-  const read = (index = 0) => apps[index % 2].inject({ url: `/api/guesses/${initial.id}`, headers });
-  const foreign = await apps[1].inject({ url: `/api/guesses/${initial.id}`,
-    headers: { cookie: `btc_player=${otherId}` } });
+  assert.equal(initial.expiresAt, undefined);
+  const read = (index = 0) => apps[index % 2].inject({
+    url: `/api/ui/game?guessId=${initialId}`, headers: { cookie: `btc_player=${playerId}` },
+  });
+  const foreign = await apps[1].inject({
+    url: `/api/ui/game?guessId=${initialId}`, headers: { cookie: `btc_player=${otherId}` },
+  });
 
-  assert.equal(foreign.statusCode, 404);
+  assert.equal(foreign.statusCode, 200);
+  assert.doesNotMatch(foreign.body, /Your guess:/);
   clock = initial.deadline - 1;
-  assert.equal((await read()).json().status, 'pending');
+  assert.match((await read()).body, /Your guess:/);
   clock = initial.deadline;
   await prices.save({ symbol: 'BTC-USD', tradeId: 2, price: 101,
     observedAt: clock - 1, freshUntil: clock + 1000, expiresAt: clock + 3600 });
-  assert.equal((await read()).json().status, 'pending');
+  assert.match((await read()).body, /Your guess:/);
   await prices.save({ symbol: 'BTC-USD', tradeId: 3, price: 100,
     observedAt: clock, freshUntil: clock + 1000, expiresAt: clock + 3600 });
-  assert.equal((await read()).json().status, 'pending');
+  assert.match((await read()).body, /Your guess:/);
   assert.equal((await players.get(playerId))?.score, 0);
   await prices.save({ symbol: 'BTC-USD', tradeId: 4, price: 101,
     observedAt: clock, freshUntil: clock + 1000, expiresAt: clock + 3600 });
@@ -452,25 +360,25 @@ test('guess API transactions enforce one pending guess and exactly-once scoring 
 
   for (const response of resolved) {
     assert.equal(response.statusCode, 200);
-    assert.deepEqual(response.json(), {
-      ...initial, status: 'resolved', finalPrice: 101, finalObservedAt: clock,
-      resolvedAt: clock, correct: true, scoreDelta: 1,
-    });
+    assert.match(response.body, /Correct! \+1 point/);
+    assert.match(response.body, /\$101\.00/);
   }
   assert.equal((await players.get(playerId))?.score, 1);
   assert.equal((await players.get(playerId))?.pendingGuessId, undefined);
   await read();
   assert.equal((await players.get(playerId))?.score, 1);
-  const next = await apps[1].inject({ method: 'POST', url: '/api/guesses', headers, payload: { direction: 'down' } });
-
-  assert.equal(next.statusCode, 201);
+  await apps[1].inject({ method: 'POST', url: '/api/ui/guesses', headers, payload: 'direction=down' });
+  const nextId = (await players.get(playerId))?.pendingGuessId;
+  assert.ok(nextId);
   clock += 60;
   await prices.save({ symbol: 'BTC-USD', tradeId: 5, price: 102,
     observedAt: clock, freshUntil: clock + 1000, expiresAt: clock + 3600 });
-  const lost = await apps[0].inject({ url: `/api/guesses/${next.json().id}`, headers });
+  const lost = await apps[0].inject({
+    url: `/api/ui/game?guessId=${nextId}`, headers: { cookie: `btc_player=${playerId}` },
+  });
 
   assert.equal(lost.statusCode, 200);
-  assert.equal(lost.json().scoreDelta, -1);
+  assert.match(lost.body, /Incorrect\. −1 point/);
   assert.equal((await players.get(playerId))?.score, 0);
   assert.equal((await players.get(playerId))?.pendingGuessId, undefined);
   const stored = await guesses.get(initial.id);
@@ -480,7 +388,7 @@ test('guess API transactions enforce one pending guess and exactly-once scoring 
   assert.deepEqual(await guesses.get(initial.id), stored);
   assert.equal((await players.get(playerId))?.score, 0);
   clock = stored.expiresAt;
-  assert.equal((await read()).statusCode, 404);
+  assert.equal((await read()).statusCode, 200);
   assert.ok(await guesses.get(initial.id));
   assert.equal((await players.get(playerId))?.score, 0);
 });

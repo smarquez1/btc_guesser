@@ -1,8 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { buildApp } from '../server/app.ts';
 import { fetchCoinbasePrice } from '../server/lib/coinbase.ts';
-import { priceRoutes } from '../server/routes/prices.ts';
 import { priceService } from '../server/services/prices.ts';
 import type { CachedPrice } from '../server/types/price.ts';
 
@@ -170,41 +168,6 @@ test('DynamoDB read and write failures propagate instead of masquerading as Coin
   store.save = async () => { throw new Error('database write'); };
   await assert.rejects(service.get(), /database write/);
 });
-
-test('price route exposes stale observation state without internal trade IDs and disables HTTP caching', async (t) => {
-  const app = buildApp();
-  t.after(() => app.close());
-  const prices = { get: async () => ({ symbol: 'BTC-USD' as const, ...observation, stale: true }) };
-  app.register(priceRoutes, { prices });
-  const available = await app.inject('/api/price');
-
-  assert.equal(available.statusCode, 200);
-  assert.deepEqual(available.json(), { symbol: 'BTC-USD', ...publicObservation, stale: true });
-  assert.equal(available.headers['cache-control'], 'no-store');
-});
-
-test('price route returns safe 503 with a retry hint when no observation is available', async (t) => {
-  const app = buildApp();
-  t.after(() => app.close());
-  app.register(priceRoutes, { prices: { get: async () => undefined } });
-  const response = await app.inject('/api/price');
-
-  assert.equal(response.statusCode, 503);
-  assert.deepEqual(response.json(), { error: 'BTC price unavailable' });
-  assert.equal(response.headers['retry-after'], '5');
-  assert.equal(response.headers['cache-control'], 'no-store');
-});
-
-test('price route hides database failure details', async (t) => {
-  const app = buildApp();
-  t.after(() => app.close());
-  app.register(priceRoutes, { prices: { get: async () => { throw new Error('private database details'); } } });
-  const response = await app.inject('/api/price');
-
-  assert.equal(response.statusCode, 500);
-  assert.deepEqual(response.json(), { error: 'Internal server error' });
-});
-
 
 test('unchanged ticker refreshes freshness without changing observation time or retention', async (t) => {
   let clock = now + 20;

@@ -1,0 +1,75 @@
+<section id="game" class="flex min-h-screen flex-col px-16 py-10" aria-label="Bitcoin guessing game"
+  data-guess-id="<%= view.lookupGuessId ?? '' %>"
+  data-pending="<%= view.pending %>"
+  hx-get="/api/ui/game<%= view.lookupGuessId ? `?guessId=${encodeURIComponent(view.lookupGuessId)}` : '' %>"
+  hx-trigger="every 3s queue:none"
+  hx-target="#game"
+  hx-swap="outerHTML"
+  hx-sync="#game-sync:abort">
+  <header class="flex items-center justify-between">
+    <strong data-player-name><%= view.player.name %></strong>
+    <p>Score <strong data-score><%= view.player.score %></strong></p>
+  </header>
+
+  <main class="flex flex-col items-center justify-center py-16 text-center">
+    <section aria-labelledby="price-label">
+      <h1 id="price-label" class="mb-4 text-xs tracking-widest text-neutral-600">BITCOIN / USD</h1>
+      <p class="text-6xl tracking-tight tabular-nums <%= view.resultPrice ? (view.guess.correct ? 'text-green-700' : 'text-red-700') : 'text-neutral-900' %>">
+        <%= view.displayedPrice ? formatUsd(view.displayedPrice.price) : '—' %>
+      </p>
+      <p class="mt-4 mb-9 text-xs text-neutral-600" data-price-label>
+        <% if (view.displayedPrice) { %>
+          Latest observation · <%= new Date(view.displayedPrice.observedAt * 1000).toLocaleTimeString() %><%= view.priceUnavailable ? ' · Last available price' : '' %>
+        <% } else { %>
+          Loading the latest price…
+        <% } %>
+      </p>
+    </section>
+
+    <section aria-labelledby="question">
+      <h2 id="question" class="mb-3 text-2xl">Where will Bitcoin go next?</h2>
+      <p class="mb-6 text-sm text-neutral-600" role="status">
+        <% if (view.pending && view.guess) { %>
+          Your guess: <span class="<%= view.guess.direction === 'up' ? 'text-green-700' : 'text-red-700' %>"><%= view.guess.direction.toUpperCase() %></span>.
+          <% if (view.countdownSeconds > 0) { %>
+            Checking begins in <span data-countdown data-deadline="<%= view.guess.deadline %>"><%= view.countdownSeconds %></span>s.
+          <% } else { %>
+            Waiting for an eligible price change…
+          <% } %>
+        <% } else if (view.pending) { %>
+          Waiting for an eligible price change…
+        <% } else if (view.guess?.status === 'resolved') { %>
+          <%= view.guess.correct ? 'Correct! +1 point.' : 'Incorrect. −1 point.' %> Choose higher or lower to play again.
+        <% } else if (view.priceUnavailable) { %>
+          Live price unavailable. Waiting for a current price…
+        <% } else { %>
+          Pick a direction. We’ll check the price after 60 seconds.
+        <% } %>
+      </p>
+
+      <form class="flex justify-center gap-3"
+        hx-post="/api/ui/guesses<%= view.lookupGuessId ? `?guessId=${encodeURIComponent(view.lookupGuessId)}` : '' %>"
+        hx-target="#game"
+        hx-swap="outerHTML"
+        hx-sync="#game-sync:drop"
+        hx-trigger="submit queue:none"
+        hx-disabled-elt="find button">
+        <button type="submit" name="direction" value="up" class="direction-button" data-direction="up" aria-pressed="<%= view.pending && view.guess?.direction === 'up' %>" <%= view.pending || view.priceUnavailable ? 'disabled' : '' %>>GUESS HIGHER</button>
+        <button type="submit" name="direction" value="down" class="direction-button" data-direction="down" aria-pressed="<%= view.pending && view.guess?.direction === 'down' %>" <%= view.pending || view.priceUnavailable ? 'disabled' : '' %>>GUESS LOWER</button>
+      </form>
+
+      <p class="mt-5 text-xs text-neutral-600">
+        <% if (view.pending && view.guess) { %>
+          Starting price <%= formatUsd(view.guess.startingPrice) %>
+        <% } else if (view.guess?.status === 'resolved' && view.guess.finalPrice !== undefined) { %>
+          Resolved at <%= formatUsd(view.guess.finalPrice) %>
+        <% } else { %>
+          Live BTC / USD pricing · Powered by Coinbase
+        <% } %>
+      </p>
+      <p class="mx-auto mt-4 min-h-5 max-w-xl text-sm text-neutral-700" role="alert"><%= view.notice ?? '' %></p>
+    </section>
+  </main>
+
+  <p class="text-center text-xs text-neutral-600">Make your guess and check back in a minute.</p>
+</section>

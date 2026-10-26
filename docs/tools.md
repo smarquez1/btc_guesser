@@ -28,7 +28,7 @@ Good uses include:
 - Fastify
 - AWS SDK
 - DynamoDB
-- React
+- HTMX
 - Vite
 - third-party package APIs
 

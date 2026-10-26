@@ -2,6 +2,8 @@ import { cp, mkdtemp, rm, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { expect, test } from '@playwright/test';
+import { guessRepository } from '../../server/repositories/guesses.ts';
+import { playerRepository } from '../../server/repositories/players.ts';
 import { priceRepository } from '../../server/repositories/prices.ts';
 import { createLocalDatabase } from '../helpers/localDatabase.ts';
 import { launchProductionServer, startProductionServer } from '../helpers/productionServer.ts';
@@ -22,7 +24,7 @@ test('the production entrypoint serves built assets and preserves the player on 
     expect(htmlResponse?.status()).toBe(200);
     await expect(page.getByRole('button', { name: 'GUESS HIGHER' })).toBeEnabled();
     await expect(page.getByText('$60,000.00', { exact: true })).toBeVisible();
-    await expect(page.locator('header strong')).toHaveText('0');
+    await expect(page.locator('[data-score]')).toHaveText('0');
 
     const assets = await page.locator('script[src], link[rel="stylesheet"]').evaluateAll(elements =>
       elements.map(element => element.getAttribute('src') ?? element.getAttribute('href')),
@@ -37,20 +39,29 @@ test('the production entrypoint serves built assets and preserves the player on 
       expect(response.headers()['content-type']).toMatch(asset?.endsWith('.js') ? /javascript/ : /css/);
     }
 
-    const profile = await (await page.request.get(`${origin}/api/players/me`)).json();
     const cookie = (await context.cookies()).find(value => value.name === 'btc_player');
     expect(cookie?.httpOnly).toBe(true);
     expect(cookie?.path).toBe('/api');
+    expect(cookie).toBeDefined();
+    if (!cookie) throw new Error('The production page did not create a player cookie');
+    const players = playerRepository(database.documentClient, database.config.tableName);
+    const guesses = guessRepository(database.documentClient, database.config.tableName);
+    const profile = await players.get(cookie.value);
+    expect(profile?.score).toBe(0);
+    if (!profile) throw new Error('The production cookie has no player profile');
     await page.getByRole('button', { name: 'GUESS HIGHER' }).click();
     await expect(page.getByRole('status')).toContainText('Your guess: UP.');
-    const pendingProfile = await (await page.request.get(`${origin}/api/players/me`)).json();
-    expect(pendingProfile.pendingGuessId).toBeTruthy();
+    const pendingProfile = await players.get(cookie.value);
+    expect(pendingProfile?.pendingGuessId).toBeTruthy();
+    if (!pendingProfile?.pendingGuessId) throw new Error('Production guess was not persisted');
+    const pendingGuess = await guesses.get(pendingProfile.pendingGuessId);
+    expect(pendingGuess?.status).toBe('pending');
 
     await page.reload();
     await expect(page.getByText(profile.name, { exact: true })).toBeVisible();
     await expect(page.getByRole('status')).toContainText('Your guess: UP.');
     await expect(page.getByRole('button', { name: 'GUESS HIGHER' })).toBeDisabled();
-    expect(await (await page.request.get(`${origin}/api/players/me`)).json()).toEqual(pendingProfile);
+    expect(await players.get(cookie.value)).toEqual(pendingProfile);
     const unknown = await page.request.get(`${origin}/api/unknown`);
     expect(unknown.status()).toBe(404);
     expect(unknown.headers()['content-type']).toContain('application/json');
@@ -78,7 +89,7 @@ test('production startup fails when the frontend build is missing', async () => 
       const [code] = await server.exited;
       expect(code).toBe(1);
       expect(server.output()).toContain('ENOENT');
-      expect(server.output()).toContain('dist/index.html');
+      expect(server.output()).toContain('dist/.vite/manifest.json');
     } finally {
       await server.close();
     }

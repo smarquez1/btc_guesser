@@ -29,21 +29,26 @@ async function setupGame(t: TestContext) {
       await database.close();
     }
   });
-  const created = await app.inject({ method: 'POST', url: '/api/players' });
-  assert.equal(created.statusCode, 201);
+  const created = await app.inject({ method: 'POST', url: '/api/ui/session' });
+  assert.equal(created.statusCode, 200);
   const cookie = String(created.headers['set-cookie']).split(';')[0];
   const playerId = cookie.split('=')[1];
   const headers = { cookie };
+  const formHeaders = {
+    ...headers,
+    origin: database.config.appOrigin,
+    'content-type': 'application/x-www-form-urlencoded',
+  };
   const guesses = guessRepository(database.documentClient, database.config.tableName);
   const players = playerRepository(database.documentClient, database.config.tableName);
   const prices = priceRepository(database.documentClient, database.config.tableName);
 
   async function submit() {
-    return app.inject({ method: 'POST', url: '/api/guesses', headers, payload: { direction: 'up' } });
+    return app.inject({ method: 'POST', url: '/api/ui/guesses', headers: formHeaders, payload: 'direction=up' });
   }
 
   async function read(id: string) {
-    return app.inject({ url: `/api/guesses/${id}`, headers });
+    return app.inject({ url: `/api/ui/game?guessId=${id}`, headers });
   }
 
   return {
@@ -56,8 +61,10 @@ async function setupGame(t: TestContext) {
 test('a failed profile condition rolls back the entire resolution transaction', async t => {
   const game = await setupGame(t);
   const response = await game.submit();
-  assert.equal(response.statusCode, 201);
-  const pending = await game.guesses.get(response.json().id);
+  assert.equal(response.statusCode, 200);
+  const pendingId = (await game.players.get(game.playerId))?.pendingGuessId;
+  assert.ok(pendingId);
+  const pending = await game.guesses.get(pendingId);
   assert.ok(pending);
   const replacementId = randomUUID();
   await game.documentClient.send(new UpdateCommand({
@@ -81,8 +88,11 @@ test('a failed profile condition rolls back the entire resolution transaction', 
 test('stored stale pricing blocks submission but eligible stale evidence resolves an existing guess', async t => {
   const game = await setupGame(t);
   const response = await game.submit();
-  assert.equal(response.statusCode, 201);
-  const guess = response.json();
+  assert.equal(response.statusCode, 200);
+  const pendingId = (await game.players.get(game.playerId))?.pendingGuessId;
+  assert.ok(pendingId);
+  const guess = await game.guesses.get(pendingId);
+  assert.ok(guess);
   game.setUpstream(undefined);
   game.setTime(guess.deadline + 10);
   await game.prices.save({
@@ -92,34 +102,38 @@ test('stored stale pricing blocks submission but eligible stale evidence resolve
 
   const result = await game.read(guess.id);
   assert.equal(result.statusCode, 200);
-  assert.equal(result.json().status, 'resolved');
-  assert.equal(result.json().finalObservedAt, guess.deadline);
+  assert.match(result.body, /Correct! \+1 point/);
   assert.equal((await game.players.get(game.playerId))?.score, 1);
   const blocked = await game.submit();
-  assert.equal(blocked.statusCode, 503);
+  assert.equal(blocked.statusCode, 200);
+  assert.match(blocked.body, /Fresh BTC price unavailable/);
   assert.equal((await game.players.get(game.playerId))?.pendingGuessId, undefined);
 
   game.setUpstream({ tradeId: 3, price: 60_200, observedAt: guess.deadline + 10 });
   const recovered = await game.submit();
-  assert.equal(recovered.statusCode, 201);
-  assert.equal(recovered.json().startingPrice, 60_200);
+  assert.equal(recovered.statusCode, 200);
+  const recoveredId = (await game.players.get(game.playerId))?.pendingGuessId;
+  assert.ok(recoveredId);
+  assert.equal((await game.guesses.get(recoveredId))?.startingPrice, 60_200);
 });
 
 test('expired pricing during an outage preserves a pending guess until a fresh observation arrives', async t => {
   const game = await setupGame(t);
   const response = await game.submit();
-  assert.equal(response.statusCode, 201);
-  const guess = response.json();
+  assert.equal(response.statusCode, 200);
+  const pendingId = (await game.players.get(game.playerId))?.pendingGuessId;
+  assert.ok(pendingId);
+  const guess = await game.guesses.get(pendingId);
+  assert.ok(guess);
   const pendingBefore = await game.guesses.get(guess.id);
   game.setUpstream(undefined);
   const recoveredAt = guess.startedAt + 3600;
   game.setTime(recoveredAt);
 
-  const unavailable = await game.app.inject('/api/price');
-  assert.equal(unavailable.statusCode, 503);
+  assert.ok(await game.prices.get(), 'expired record still exists before DynamoDB TTL cleanup');
   const pending = await game.read(guess.id);
   assert.equal(pending.statusCode, 200);
-  assert.equal(pending.json().status, 'pending');
+  assert.match(pending.body, /Your guess:/);
   assert.deepEqual(await game.guesses.get(guess.id), pendingBefore);
   assert.equal((await game.players.get(game.playerId))?.score, 0);
   assert.equal((await game.players.get(game.playerId))?.pendingGuessId, guess.id);
@@ -127,8 +141,8 @@ test('expired pricing during an outage preserves a pending guess until a fresh o
 
   game.setUpstream({ tradeId: 2, price: 60_100, observedAt: recoveredAt });
   const result = await game.read(guess.id);
-  assert.equal(result.json().status, 'resolved');
-  assert.equal(result.json().finalObservedAt, recoveredAt);
+  assert.match(result.body, /Correct! \+1 point/);
+  assert.equal((await game.guesses.get(guess.id))?.finalObservedAt, recoveredAt);
   assert.equal((await game.players.get(game.playerId))?.score, 1);
   assert.equal((await game.players.get(game.playerId))?.pendingGuessId, undefined);
   await game.read(guess.id);

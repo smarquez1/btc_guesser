@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 import fastifyStatic from '@fastify/static';
 import { buildApp } from './app.ts';
 import { loadConfig } from './config.ts';
+import { pageAssets } from './lib/assets.ts';
 
 try {
   const config = loadConfig();
@@ -10,9 +11,10 @@ try {
 
   if (process.env.NODE_ENV === 'production') {
     const clientRoot = resolve(import.meta.dirname, '../dist');
-    await access(resolve(clientRoot, 'index.html'));
+    await access(resolve(clientRoot, '.vite/manifest.json'));
+    await pageAssets(config);
 
-    app.register(fastifyStatic, { root: clientRoot });
+    app.register(fastifyStatic, { root: resolve(clientRoot, 'assets'), prefix: '/assets/' });
   }
 
   for (const signal of ['SIGINT', 'SIGTERM'] as const) {
